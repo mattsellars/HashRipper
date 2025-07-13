@@ -44,8 +44,6 @@ final class FirmwareReleasesViewModel: Sendable {
                         var miners = result[miner.minerType.deviceGenre] ?? []
                             miners.append(miner)
                             result[miner.minerType.deviceGenre] = miners
-
-//                        result.insert(miner.minerType.deviceGenre)
                     }
                     return minerGenres
                 } catch (let error) {
@@ -102,19 +100,8 @@ final class FirmwareReleasesViewModel: Sendable {
                             releases.forEach { releaseInfo in
                                 
                                 
-                                // create release entries only for miners we have
-//                                let deviceModels: Set<String> = allMinerModels.reduce(into: Set<String>()) { result, miner in
-//                                    if let model = miner.deviceModel {
-//                                        result.insert(model)
-//                                    }
-//                                }
                                 if !allMinerModels.isEmpty {
                                     let releaseAssets = releaseInfo.getNerdQAxeReleaseAssets(deviceModels: Array(allMinerModels))
-//                                    let wwwBinAsset = releaseAssets.filter({ $0.name == "www.bin"} ).first
-//                                    guard let wwwBinFileAsset = wwwBinAsset else {
-//                                        print("www.bin asset not found in release")
-//                                        return
-//                                    }
                                     releaseAssets.forEach({ deviceAsset in
                                         let minerAsset = deviceAsset.binAsset
                                         let wwwAsset = deviceAsset.wwwAsset

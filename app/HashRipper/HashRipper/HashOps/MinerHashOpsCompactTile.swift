@@ -16,9 +16,6 @@ struct MinerHashOpsCompactTile: View {
 
     var miner: Miner
 
-//    @Query
-//    var latestsUpdates: [MinerUpdate]
-
     @State
     var showRestartSuccessDialog: Bool = false
 
@@ -28,7 +25,6 @@ struct MinerHashOpsCompactTile: View {
 
     var mostRecentUpdate: MinerUpdate? {
         miner.minerUpdates.last ?? nil
-//        latestsUpdates.first ?? nil
     }
     var asicTempText: String {
         if let temp = mostRecentUpdate?.temp {
@@ -209,14 +205,12 @@ struct ParasitePoolIndicatorView: View {
     @Environment(\.colorScheme) var colorScheme
 
     var body: some View {
-//        HStack {
-            Image("parasiteIcon")
-                .resizable()
-                .frame(width: 8, height: 8)
-                .background(Color.clear)
-//        }
-        .padding(3)
-//        .background(colorScheme == .dark ? Color.white : Color.gray)
+        Image("parasiteIcon")
+            .resizable()
+            .frame(width: 8, height: 8)
+            .background(Color.clear)
+
+            .padding(3)
         .clipShape(Circle())
         .overlay(Circle().stroke(Color.gray, lineWidth: 1))
         .help("Miner connected to Parasite pool")

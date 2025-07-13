@@ -34,17 +34,6 @@ struct HashOpsView: View {
 
                     }
                 }.padding(.top, 16)
-                //        }
-                //        List(allMiners) { miner in
-                //            MinerHashOpsCompactTile(miner: miner)
-                //                .listRowSeparator(.hidden)
-                ////            MinerHashOpsSummaryView(miner: miner)
-                //                .contentShape(Rectangle())
-                //                .onTapGesture {
-                //                    selectedMiner = miner
-                //                }
-                //
-                //        }
                     .sheet(item: $selectedMiner) { miner in
                         MinerSegmentedUpdateChartsView(miner: miner, onClose: {
                             selectedMiner = nil
@@ -60,12 +49,9 @@ struct HashOpsView: View {
                 .renderingMode(.template)
                 .aspectRatio(contentMode: .fill)
                 .foregroundStyle(backgroundGradient)
-//                .overlay()
-//                .blendMode(.difference)
                 .allowsHitTesting(false)
                 .opacity(0.5)
         )
-//        .clipped()
     }
 
 }

@@ -20,9 +20,6 @@ struct MainContentView: View {
     @Environment(\.database) private var database
     @Environment(\.firmwareReleaseViewModel) private var firmwareReleaseViewModel
 
-//    @State private var isPaused = false
-
-//    @Query private var allMiners: [AxeMiner]
     @State var isShowingInspector: Bool = false
 
     @State private var sideBarSelection: String = "hashops"
@@ -113,14 +110,7 @@ struct MainContentView: View {
                 }
             }
         })
-        
-//        .overlay(alignment: .topTrailing) {
-//            GeometryReader { g in
-//
-//
-//
-//            }
-//        }
+
         .inspectorColumnWidth(min:100, ideal: 200, max:400)
             .inspector(isPresented: self.$isShowingInspector) {
                         }
@@ -152,25 +142,11 @@ struct MainContentView: View {
         showProfileRolloutSheet = true
     }
 
-    private func addItem() {
-//        withAnimation {
-//            let newItem = Item(timestamp: Date())
-//            modelContext.insert(newItem)
-//        }
-    }
     private func addNewMiner() {
         showAddMinerSheet = true
     }
 
     private func showMinerChartsSheet() {
         showMinerCharts = true
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-//        withAnimation {
-//            for index in offsets {
-//                modelContext.delete(items[index])
-//            }
-//        }
     }
 }

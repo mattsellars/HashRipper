@@ -35,9 +35,6 @@ struct FirmwareReleasesView: View {
     var body: some View {
 
         HStack {
-            //        if viewModel.isLoading {
-            //            Text("Loading...")
-            //        }
             List {
                 ForEach (releasesGroupedByDeviceType.keys.sorted(), id: \.self) { deviceModel in
                     Section(header: Text("\(deviceModel) (\(viewModel.countByDeviceModel(deviceModel)) miners)")) {
@@ -58,6 +55,7 @@ struct FirmwareReleasesView: View {
             FirmwareReleaseNotesView(releaseName: release.name, deviceModel: release.device, releaseNotes: release.changeLogMarkup, releaseUrl: URL(string: release.changeLogUrl)) {
                 self.selectedRelease = nil
             }
+            .presentationSizing(.automatic)
         })
     }
 
