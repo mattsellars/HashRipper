@@ -45,4 +45,5 @@ Building the app:
 - Download Xcode from apple or macOS app store
 - Open the file HashRipper/app/HashRipper.xcodeproj
 - Make sure the destination at the top of Xcode shows `HashRipper > My Mac`
+  <img width="626" height="51" alt="Screenshot 2025-07-12 at 8 31 34 PM" src="https://github.com/user-attachments/assets/c0826340-c29e-4200-8616-d53dd144a12d" />
 - Hit the top play button or on the keyboard hit the keyboard shortcut `cmd + r` to run the app
