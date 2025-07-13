@@ -38,3 +38,11 @@ Step 2. Select Miners
 
 Step 3. Deploy
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 20 25 PM" src="https://github.com/user-attachments/assets/8186a391-0125-494c-9c08-523e82a50e4b" />
+
+
+At some point I'll build a release binary but until then if you want to give it a go
+Building the app:
+- Download Xcode from apple or macOS app store
+- Open the file HashRipper/app/HashRipper.xcodeproj
+- Make sure the destination at the top of Xcode shows `HashRipper > My Mac`
+- Hit the top play button or on the keyboard hit the keyboard shortcut `cmd + r` to run the app
