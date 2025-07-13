@@ -1,0 +1,600 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C91EC66F2DAF5E4F00432FA4 /* AxeOSUtils in Frameworks */ = {isa = PBXBuildFile; productRef = C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */; };
+		C923FFA72DC8434A00D85C1D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C923FFA62DC8434A00D85C1D /* MarkdownUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C91EC64A2DAF564C00432FA4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C91EC6312DAF564B00432FA4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C91EC6382DAF564B00432FA4;
+			remoteInfo = HashRipper;
+		};
+		C91EC6542DAF564C00432FA4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = C91EC6312DAF564B00432FA4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C91EC6382DAF564B00432FA4;
+			remoteInfo = HashRipper;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		C91EC6392DAF564B00432FA4 /* HashRipper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HashRipper.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C91EC6492DAF564C00432FA4 /* HashRipperTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HashRipperTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C91EC6532DAF564C00432FA4 /* HashRipperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HashRipperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		C91EC63B2DAF564B00432FA4 /* HashRipper */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HashRipper;
+			sourceTree = "<group>";
+		};
+		C91EC64C2DAF564C00432FA4 /* HashRipperTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HashRipperTests;
+			sourceTree = "<group>";
+		};
+		C91EC6562DAF564C00432FA4 /* HashRipperUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = HashRipperUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C91EC6362DAF564B00432FA4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C91EC66F2DAF5E4F00432FA4 /* AxeOSUtils in Frameworks */,
+				C923FFA72DC8434A00D85C1D /* MarkdownUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC6462DAF564C00432FA4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC6502DAF564C00432FA4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		C91EC6302DAF564B00432FA4 = {
+			isa = PBXGroup;
+			children = (
+				C91EC63B2DAF564B00432FA4 /* HashRipper */,
+				C91EC64C2DAF564C00432FA4 /* HashRipperTests */,
+				C91EC6562DAF564C00432FA4 /* HashRipperUITests */,
+				C91EC66D2DAF5E4F00432FA4 /* Frameworks */,
+				C91EC63A2DAF564B00432FA4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C91EC63A2DAF564B00432FA4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C91EC6392DAF564B00432FA4 /* HashRipper.app */,
+				C91EC6492DAF564C00432FA4 /* HashRipperTests.xctest */,
+				C91EC6532DAF564C00432FA4 /* HashRipperUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		C91EC66D2DAF5E4F00432FA4 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		C91EC6382DAF564B00432FA4 /* HashRipper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C91EC65D2DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipper" */;
+			buildPhases = (
+				C91EC6352DAF564B00432FA4 /* Sources */,
+				C91EC6362DAF564B00432FA4 /* Frameworks */,
+				C91EC6372DAF564B00432FA4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C91EC63B2DAF564B00432FA4 /* HashRipper */,
+			);
+			name = HashRipper;
+			packageProductDependencies = (
+				C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */,
+				C923FFA62DC8434A00D85C1D /* MarkdownUI */,
+			);
+			productName = HashRipper;
+			productReference = C91EC6392DAF564B00432FA4 /* HashRipper.app */;
+			productType = "com.apple.product-type.application";
+		};
+		C91EC6482DAF564C00432FA4 /* HashRipperTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C91EC6602DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipperTests" */;
+			buildPhases = (
+				C91EC6452DAF564C00432FA4 /* Sources */,
+				C91EC6462DAF564C00432FA4 /* Frameworks */,
+				C91EC6472DAF564C00432FA4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C91EC64B2DAF564C00432FA4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C91EC64C2DAF564C00432FA4 /* HashRipperTests */,
+			);
+			name = HashRipperTests;
+			packageProductDependencies = (
+			);
+			productName = HashRipperTests;
+			productReference = C91EC6492DAF564C00432FA4 /* HashRipperTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		C91EC6522DAF564C00432FA4 /* HashRipperUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C91EC6632DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipperUITests" */;
+			buildPhases = (
+				C91EC64F2DAF564C00432FA4 /* Sources */,
+				C91EC6502DAF564C00432FA4 /* Frameworks */,
+				C91EC6512DAF564C00432FA4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C91EC6552DAF564C00432FA4 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C91EC6562DAF564C00432FA4 /* HashRipperUITests */,
+			);
+			name = HashRipperUITests;
+			packageProductDependencies = (
+			);
+			productName = HashRipperUITests;
+			productReference = C91EC6532DAF564C00432FA4 /* HashRipperUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C91EC6312DAF564B00432FA4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1630;
+				LastUpgradeCheck = 1630;
+				TargetAttributes = {
+					C91EC6382DAF564B00432FA4 = {
+						CreatedOnToolsVersion = 16.3;
+					};
+					C91EC6482DAF564C00432FA4 = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = C91EC6382DAF564B00432FA4;
+					};
+					C91EC6522DAF564C00432FA4 = {
+						CreatedOnToolsVersion = 16.3;
+						TestTargetID = C91EC6382DAF564B00432FA4;
+					};
+				};
+			};
+			buildConfigurationList = C91EC6342DAF564B00432FA4 /* Build configuration list for PBXProject "HashRipper" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = C91EC6302DAF564B00432FA4;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */,
+				C923FFA52DC8434A00D85C1D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C91EC63A2DAF564B00432FA4 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				C91EC6382DAF564B00432FA4 /* HashRipper */,
+				C91EC6482DAF564C00432FA4 /* HashRipperTests */,
+				C91EC6522DAF564C00432FA4 /* HashRipperUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C91EC6372DAF564B00432FA4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC6472DAF564C00432FA4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC6512DAF564C00432FA4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C91EC6352DAF564B00432FA4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC6452DAF564C00432FA4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C91EC64F2DAF564C00432FA4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C91EC64B2DAF564C00432FA4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C91EC6382DAF564B00432FA4 /* HashRipper */;
+			targetProxy = C91EC64A2DAF564C00432FA4 /* PBXContainerItemProxy */;
+		};
+		C91EC6552DAF564C00432FA4 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C91EC6382DAF564B00432FA4 /* HashRipper */;
+			targetProxy = C91EC6542DAF564C00432FA4 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		C91EC65B2DAF564C00432FA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		C91EC65C2DAF564C00432FA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		C91EC65E2DAF564C00432FA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HashRipper/HashRipper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C91EC65F2DAF564C00432FA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HashRipper/HashRipper.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipper;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C91EC6612DAF564C00432FA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipperTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HashRipper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HashRipper";
+			};
+			name = Debug;
+		};
+		C91EC6622DAF564C00432FA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipperTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HashRipper.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/HashRipper";
+			};
+			name = Release;
+		};
+		C91EC6642DAF564C00432FA4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipperUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = HashRipper;
+			};
+			name = Debug;
+		};
+		C91EC6652DAF564C00432FA4 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.sellars.hashripper.HashRipperUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_TARGET_NAME = HashRipper;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C91EC6342DAF564B00432FA4 /* Build configuration list for PBXProject "HashRipper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C91EC65B2DAF564C00432FA4 /* Debug */,
+				C91EC65C2DAF564C00432FA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C91EC65D2DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C91EC65E2DAF564C00432FA4 /* Debug */,
+				C91EC65F2DAF564C00432FA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C91EC6602DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipperTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C91EC6612DAF564C00432FA4 /* Debug */,
+				C91EC6622DAF564C00432FA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C91EC6632DAF564C00432FA4 /* Build configuration list for PBXNativeTarget "HashRipperUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C91EC6642DAF564C00432FA4 /* Debug */,
+				C91EC6652DAF564C00432FA4 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../libs/AxeOSUtils;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C923FFA52DC8434A00D85C1D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.4.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */;
+			productName = AxeOSUtils;
+		};
+		C923FFA62DC8434A00D85C1D /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C923FFA52DC8434A00D85C1D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = C91EC6312DAF564B00432FA4 /* Project object */;
+}
