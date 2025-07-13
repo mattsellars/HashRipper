@@ -3,19 +3,19 @@
 
 Work in progress macOS app to manage AxeOS based bitcoin miners.
 
-Features:
+## Features:
 - Uses swarm scan approach to find miners on network
 - Quick overview of miners
 - Setup miner profiles to quickly swap/try mining pools
 - Shows firmware releases for the devices you have
 - Simple onboarding for new miner devices by using your saved profiles
 
-Future Features
+## Future Features
 - Firmware download and rollouts/rollbacks
 - ASIC health monitoring for multi-asic devices
 - Profile export to share pool configs
 
-Example screenshots:
+## Example App screenshots:
 
 Main Hash Operations
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 12 34 PM" src="https://github.com/user-attachments/assets/c3737c06-7761-4913-9324-a4bf9132d710" />
@@ -41,7 +41,8 @@ Step 3. Deploy
 
 
 At some point I'll build a release binary but until then if you want to give it a go
-Building the app:
+
+## Building the app
 - Download Xcode from apple or macOS app store
 - Open the file HashRipper/app/HashRipper.xcodeproj
 - Make sure the destination at the top of Xcode shows `HashRipper > My Mac`
@@ -49,12 +50,15 @@ Building the app:
 - Hit the top play button or on the keyboard hit the keyboard shortcut `cmd + r` to run the app
 
 
+# Fund More Features
 If you find it useful help fund more features by sending some sats to one of the following:
 
 Lightning Bitcoin Address mattsellars@vipsats.app
+
 ![IMG_1B6AB58B02B3-1](https://github.com/user-attachments/assets/8ff8be1a-fb58-4bc6-bbab-fd31c227bfb5)
 
 Direct Bitcoin Address
+
 <img width="339" height="289" alt="Screenshot 2025-07-12 at 8 42 51 PM" src="https://github.com/user-attachments/assets/330fc042-ab61-4198-b2ea-690b0f84cac5" />
 
 
