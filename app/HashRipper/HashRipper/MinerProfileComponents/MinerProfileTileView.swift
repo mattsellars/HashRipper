@@ -146,6 +146,8 @@ struct MinerProfileTileView: View {
                 onCancel: {
                     showDuplicateProfileForm = false
                 })
+            .id("duoplicateProfileForm\(minerProfile.name)")
+            .presentationSizing(.fitted)
 
         }
         .sheet(isPresented: $showEditProfileSheet) {
@@ -155,17 +157,21 @@ struct MinerProfileTileView: View {
                 stratumURL: minerProfile.stratumURL,
                 stratumPort: minerProfile.stratumPort,
                 poolAccount: minerProfile.poolAccount,
+                parasiteLightningAddress: minerProfile.parasiteLightningAddress,
                 stratumPassword: minerProfile.stratumPassword,
                 fallbackURL: minerProfile.fallbackStratumURL,
                 fallbackPort: minerProfile.fallbackStratumPort,
                 fallbackAccount: minerProfile.fallbackStratumAccount,
+                fallbackParasiteLightningAddress: minerProfile.fallbackParasiteLightningAddress,
                 fallbackStratumPassword: minerProfile.fallbackStratumPassword,
                 onSave: { _ in
                     showEditProfileSheet = false
                 },
                 onCancel: {
                     showEditProfileSheet = false
-                }).presentationSizing(.fitted)
+                })
+            .id("editProfileForm\(minerProfile.name)")
+            .presentationSizing(.fitted)
 
         }
     }

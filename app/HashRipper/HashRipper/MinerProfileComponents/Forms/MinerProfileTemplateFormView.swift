@@ -63,6 +63,27 @@ struct MinerProfileTemplateFormView: View {
         self.onSave = onSave
         self.onCancel = onCancel
     }
+
+    func swapPoolSettings() {
+        let newFallbackStratumURL = self.stratumURL
+        let newFallbackStratumPort = self.stratumPort
+        let newFallbackPoolAccount = self.poolAccount
+        let newFallbackParasiteLightningAddress = self.parasiteLightningAddress
+        let newFallbackStratumPassword = self.stratumPassword
+        
+        self.stratumURL = self.fallbackURL
+        self.stratumPort = self.fallbackPort
+        self.poolAccount = self.fallbackAccount
+        self.parasiteLightningAddress = self.fallbackParasiteLightningAddress
+        self.stratumPassword = self.fallbackStratumPassword
+
+        self.fallbackURL = newFallbackStratumURL
+        self.fallbackPort = newFallbackStratumPort
+        self.fallbackAccount = newFallbackPoolAccount
+        self.fallbackParasiteLightningAddress = newFallbackParasiteLightningAddress
+        self.fallbackStratumPassword = newFallbackStratumPassword
+    }
+
     // MARK: – Body
     var body: some View {
         VStack(alignment: .leading) {
@@ -131,8 +152,19 @@ struct MinerProfileTemplateFormView: View {
                 .padding(.horizontal, 24)
                 .navigationTitle("New Miner Profile")
             }
-            HStack {
+            HStack(alignment:.lastTextBaseline) {
                 Spacer()
+                Button(action: swapPoolSettings, label: {
+                    HStack {
+                        Image(systemName: "rectangle.2.swap")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                            .foregroundStyle(Color.orange)
+                        Text("Swap Primary and Fallback pools")
+                    }
+                })
+                .buttonStyle(LinkButtonStyle())
+                Spacer().frame(width: 120)
                 Button("Cancel", action: onCancel)
                 Button("Save", action: saveTemplate)
                     .buttonStyle(.borderedProminent)
@@ -155,7 +187,8 @@ struct MinerProfileTemplateFormView: View {
             && stratumPort > 0
             && ( !isParasitePool(sanitizedStratumUrl)
                  || ( isParasitePool(sanitizedStratumUrl)
-                      && !parasiteLightningAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                      && !parasiteLightningAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            )
             && !stratumPassword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !poolAccount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -168,8 +201,9 @@ struct MinerProfileTemplateFormView: View {
 
         let addFallback = !sanitizedFallbackUrl.isEmpty
             && (
-                !isParasitePool(sanitizedFallbackUrl) || isParasitePool(sanitizedFallbackUrl) &&
-                !parasiteLightningAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                !isParasitePool(sanitizedFallbackUrl)
+                || (isParasitePool(sanitizedFallbackUrl) &&
+                !fallbackParasiteLightningAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             )
             && fallbackPort != 0
             && !fallbackAccount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -183,9 +217,9 @@ struct MinerProfileTemplateFormView: View {
             parasiteLightningAddress: isParasitePool(stratumURL) ? parasiteLightningAddress : nil,
             stratumPort:        stratumPort,
             stratumPassword: stratumPassword,
-            fallbackStratumURL:     addFallback ? fallbackURL.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
+            fallbackStratumURL:     addFallback ? sanitizedFallbackUrl : nil,
             fallbackStratumAccount: addFallback  ? fallbackAccount.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
-            fallbackParasiteLightningAddress: isParasitePool(fallbackURL) ? fallbackParasiteLightningAddress : nil,
+            fallbackParasiteLightningAddress: isParasitePool(sanitizedFallbackUrl) ? fallbackParasiteLightningAddress : nil,
             fallbackStatrumPassword: addFallback ? fallbackStratumPassword.trimmingCharacters(in: .whitespacesAndNewlines) : nil,
             fallbackStratumPort:    addFallback ? fallbackPort : nil
         )
