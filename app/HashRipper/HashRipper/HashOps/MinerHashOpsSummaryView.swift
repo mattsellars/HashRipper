@@ -106,16 +106,16 @@ struct MinerHashOpsSummaryView: View  {
                     }
                     Spacer()
                         .frame(width: 20)
-                    HStack {
-                        Text("Firmware Update Available")
-                            .foregroundStyle(Color.cyan)
-                    }
-                    .padding(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
-                    .clipShape(.capsule)
-                    .overlay(
-                        Capsule()
-                            .stroke(.cyan, lineWidth: 1)
-                    )
+//                    HStack {
+//                        Text("Firmware Update Available")
+//                            .foregroundStyle(Color.cyan)
+//                    }
+//                    .padding(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
+//                    .clipShape(.capsule)
+//                    .overlay(
+//                        Capsule()
+//                            .stroke(.cyan, lineWidth: 1)
+//                    )
 
                 }
 
