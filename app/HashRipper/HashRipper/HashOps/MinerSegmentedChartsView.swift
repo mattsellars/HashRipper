@@ -12,90 +12,91 @@ import SwiftUI
 
 let kDataPointCount = 50
 
-struct MinerSegmentedUpdateChartsView: View {
-    enum ChartSegments: Int, CaseIterable  {
-        case hashRate = 0
-        case asicTemperature = 1
-        case voltageRegulatorTemperature = 2
-        case fanRPM = 3
-        case power = 4
-        case voltage = 5
+enum ChartSegments: Int, CaseIterable, Hashable  {
+    case hashRate = 0
+    case asicTemperature = 1
+    case voltageRegulatorTemperature = 2
+    case fanRPM = 3
+    case power = 4
+    case voltage = 5
 
-        var title: String {
-            switch self {
-            case .hashRate:
-                return "Hash Rate"
-            case .asicTemperature:
-                return "ASIC Temp"
-            case .voltageRegulatorTemperature:
-                return "VR Temp"
-            case .fanRPM:
-                return "Fan RPM"
-            case .power:
-                return "Power"
-            case .voltage:
-                return "Voltage"
-            }
-        }
-
-        var symbol: String {
-            switch self {
-            case .hashRate:
-                return "H/s"
-            case .asicTemperature:
-                return "°C"
-            case .voltageRegulatorTemperature:
-                return "°C"
-            case .fanRPM:
-                return "RPM"
-            case .power:
-                return "W"
-            default:
-                return "V"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .hashRate:
-                return .mint
-            case .asicTemperature:
-                return .orange
-            case .voltageRegulatorTemperature:
-                return .red
-            case .fanRPM:
-                return .cyan
-            case .power:
-                return .yellow
-            default:
-                return .pink
-            }
-        }
-
-        var iconName: String {
-            switch self {
-            case .hashRate:
-                return "gauge.with.dots.needle.67percent"
-            case .asicTemperature:
-                return "thermometer.variable"
-            case .voltageRegulatorTemperature:
-                return "thermometer.variable"
-            case .fanRPM:
-                return "fan.desk"
-            case .voltage, .power:
-                return "bolt"
-            }
-        }
-
-        var iconRotates: Bool {
-            switch self {
-            case .fanRPM:
-                return true
-            default:
-                return false
-            }
+    var title: String {
+        switch self {
+        case .hashRate:
+            return "Hash Rate"
+        case .asicTemperature:
+            return "Temps"
+        case .voltageRegulatorTemperature:
+            return "VR Temp"
+        case .fanRPM:
+            return "Fan RPM"
+        case .power:
+            return "Power"
+        case .voltage:
+            return "Voltage"
         }
     }
+
+    var symbol: String {
+        switch self {
+        case .hashRate:
+            return "H/s"
+        case .asicTemperature:
+            return "°C"
+        case .voltageRegulatorTemperature:
+            return "°C"
+        case .fanRPM:
+            return "RPM"
+        case .power:
+            return "W"
+        default:
+            return "V"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .hashRate:
+            return .mint
+        case .asicTemperature:
+            return .orange
+        case .voltageRegulatorTemperature:
+            return .red
+        case .fanRPM:
+            return .cyan
+        case .power:
+            return .yellow
+        default:
+            return .pink
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .hashRate:
+            return "gauge.with.dots.needle.67percent"
+        case .asicTemperature:
+            return "thermometer.variable"
+        case .voltageRegulatorTemperature:
+            return "thermometer.variable"
+        case .fanRPM:
+            return "fan.desk"
+        case .voltage, .power:
+            return "bolt"
+        }
+    }
+
+    var iconRotates: Bool {
+        switch self {
+        case .fanRPM:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+struct MinerSegmentedUpdateChartsView: View {
     @Environment(\.minerClientManager) var minerClientManager
 
     @State private var segmentIndex = 0
@@ -131,7 +132,8 @@ struct MinerSegmentedUpdateChartsView: View {
                 ])
         })
     }
-    var mostRecentUpdateTitleValue: String {
+
+    func mostRecentUpdateTitleValue(segmentIndex: Int) -> String {
         let value = updates.last?.values[segmentIndex]
         switch ChartSegments(rawValue: segmentIndex) ?? .hashRate {
             case .hashRate:
@@ -142,6 +144,7 @@ struct MinerSegmentedUpdateChartsView: View {
         case .voltageRegulatorTemperature, .asicTemperature:
             let mf = MeasurementFormatter()
             mf.unitOptions = .providedUnit
+            mf.numberFormatter.maximumFractionDigits = 1
             let temp = Measurement(value: value?.primary ?? 0, unit: UnitTemperature.celsius)
             return mf.string(from: temp)
         case .fanRPM:
@@ -153,17 +156,22 @@ struct MinerSegmentedUpdateChartsView: View {
 
     var selectedSemgentTitle: some View {
         VStack(alignment: .leading) {
-            HStack {
-                if (ChartSegments(rawValue: segmentIndex) ?? .hashRate).iconRotates {
-                    Image(systemName: (ChartSegments(rawValue: segmentIndex) ?? .hashRate).iconName)
-                        .font(.title3)
-                        .symbolEffect(.rotate)
-                } else {
-                    Image(systemName: (ChartSegments(rawValue: segmentIndex) ?? .hashRate).iconName)
-                        .font(.title3)
+            if segmentIndex == ChartSegments.asicTemperature.rawValue {
+                VStack(alignment: .leading) {
+                    TitleValueView(
+                        segment: ChartSegments.asicTemperature,
+                        value: mostRecentUpdateTitleValue(segmentIndex: ChartSegments.asicTemperature.rawValue)
+                    )
+                    TitleValueView(
+                        segment: ChartSegments.voltageRegulatorTemperature,
+                        value: mostRecentUpdateTitleValue(segmentIndex: ChartSegments.voltageRegulatorTemperature.rawValue)
+                    )
                 }
-                Text("\((ChartSegments(rawValue: segmentIndex) ?? .hashRate).title) · \(mostRecentUpdateTitleValue)")
-                    .font(.headline)
+            } else {
+                TitleValueView(
+                    segment: ChartSegments(rawValue: segmentIndex) ?? .hashRate,
+                    value: mostRecentUpdateTitleValue(segmentIndex: segmentIndex)
+                )
             }
         }.padding(EdgeInsets(top: 12, leading: 0, bottom: 8, trailing: 0))
     }
@@ -191,7 +199,7 @@ struct MinerSegmentedUpdateChartsView: View {
             Divider()
             VStack {
                 Picker("", selection: $segmentIndex) {
-                    ForEach(ChartSegments.allCases, id: \.self) { segment in
+                    ForEach(ChartSegments.allCases.filter({ $0 != ChartSegments.voltageRegulatorTemperature }), id: \.self) { segment in
                         Text(segment.title).tag(segment.rawValue)
                     }
                 }.pickerStyle(.segmented)
@@ -199,11 +207,38 @@ struct MinerSegmentedUpdateChartsView: View {
             selectedSemgentTitle
             Chart {
                 ForEach(updates.indices, id: \.self) { i in
-                    LineMark(
-                        x: .value("Time", updates[i].time),
-                        y: .value(ChartSegments(rawValue: segmentIndex)?.title ?? "No title", Double(updates[i].values[segmentIndex].primary))
-                    )
-                    .interpolationMethod(.catmullRom)
+                    let entry = updates[i]
+
+                    if segmentIndex == ChartSegments.asicTemperature.rawValue ||
+                        segmentIndex == ChartSegments.voltageRegulatorTemperature.rawValue {
+
+                        // ASIC Temp line (orange)
+                        LineMark(
+                            x: .value("Time", entry.time),
+                            y: .value("ASIC Temp", entry.values[ChartSegments.asicTemperature.rawValue].primary),
+                            series: .value("asic", "A")
+                        )
+                        .foregroundStyle(ChartSegments.asicTemperature.color)
+                        .interpolationMethod(.catmullRom)
+
+                        // VR Temp line (red)
+                        LineMark(
+                            x: .value("Time", entry.time),
+                            y: .value("VR Temp", entry.values[ChartSegments.voltageRegulatorTemperature.rawValue].primary),
+                            series: .value("vr", "B")
+                        )
+                        .foregroundStyle(ChartSegments.voltageRegulatorTemperature.color)
+                        .interpolationMethod(.catmullRom)
+
+                    } else {
+                        // Default single-line chart
+                        LineMark(
+                            x: .value("Time", entry.time),
+                            y: .value(ChartSegments(rawValue: segmentIndex)?.title ?? "No title", entry.values[segmentIndex].primary)
+                        )
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(ChartSegments(rawValue: segmentIndex)?.color ?? .black)
+                    }
                 }
             }
             .chartYAxisLabel { Text(ChartSegments(rawValue: segmentIndex)?.symbol ?? "?").font(.caption) }
@@ -268,4 +303,24 @@ struct ChartSegmentedDataEntry: Hashable {
 struct ChartSegmentValues: Hashable {
     let primary: Double
     let secondary: Double?
+}
+
+struct TitleValueView: View {
+    var segment: ChartSegments
+    var value: String
+
+    var body: some View {
+        HStack {
+            if segment.iconRotates {
+                Image(systemName: segment.iconName)
+                    .font(.title3)
+                    .symbolEffect(.rotate)
+            } else {
+                Image(systemName: segment.iconName)
+                    .font(.title3)
+            }
+            Text("\(segment.title) · \(value)")
+                .font(.headline)
+        }
+    }
 }
