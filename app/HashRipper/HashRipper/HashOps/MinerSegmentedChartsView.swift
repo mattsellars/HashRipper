@@ -20,12 +20,29 @@ enum ChartSegments: Int, CaseIterable, Hashable  {
     case power = 4
     case voltage = 5
 
-    var title: String {
+    var tabName: String {
         switch self {
         case .hashRate:
             return "Hash Rate"
         case .asicTemperature:
             return "Temps"
+        case .voltageRegulatorTemperature:
+            return "VR Temp"
+        case .fanRPM:
+            return "Fan RPM"
+        case .power:
+            return "Power"
+        case .voltage:
+            return "Voltage"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .hashRate:
+            return "Hash Rate"
+        case .asicTemperature:
+            return "Asic Temp"
         case .voltageRegulatorTemperature:
             return "VR Temp"
         case .fanRPM:
@@ -176,6 +193,10 @@ struct MinerSegmentedUpdateChartsView: View {
         }.padding(EdgeInsets(top: 12, leading: 0, bottom: 8, trailing: 0))
     }
 
+    var tabs: [ChartSegments] {
+        ChartSegments.allCases.filter({ $0 != ChartSegments.voltageRegulatorTemperature })
+    }
+
     var body: some View {
         VStack() {
                 VStack {
@@ -199,8 +220,8 @@ struct MinerSegmentedUpdateChartsView: View {
             Divider()
             VStack {
                 Picker("", selection: $segmentIndex) {
-                    ForEach(ChartSegments.allCases.filter({ $0 != ChartSegments.voltageRegulatorTemperature }), id: \.self) { segment in
-                        Text(segment.title).tag(segment.rawValue)
+                    ForEach(tabs, id: \.self) { segment in
+                        Text(segment.tabName).tag(segment.rawValue)
                     }
                 }.pickerStyle(.segmented)
             }.padding(16)
@@ -209,8 +230,7 @@ struct MinerSegmentedUpdateChartsView: View {
                 ForEach(updates.indices, id: \.self) { i in
                     let entry = updates[i]
 
-                    if segmentIndex == ChartSegments.asicTemperature.rawValue ||
-                        segmentIndex == ChartSegments.voltageRegulatorTemperature.rawValue {
+                    if segmentIndex == ChartSegments.asicTemperature.rawValue {
 
                         // ASIC Temp line (orange)
                         LineMark(
