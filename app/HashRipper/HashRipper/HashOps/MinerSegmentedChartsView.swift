@@ -9,6 +9,7 @@ import Charts
 import Foundation
 import SwiftData
 import SwiftUI
+import AppKit
 
 let kDataPointCount = 50
 
@@ -188,6 +189,7 @@ struct MinerSegmentedUpdateChartsView: View {
                 TitleValueView(
                     segment: ChartSegments(rawValue: segmentIndex) ?? .hashRate,
                     value: mostRecentUpdateTitleValue(segmentIndex: segmentIndex)
+
                 )
             }
         }.padding(EdgeInsets(top: 12, leading: 0, bottom: 8, trailing: 0))
@@ -335,9 +337,11 @@ struct TitleValueView: View {
                 Image(systemName: segment.iconName)
                     .font(.title3)
                     .symbolEffect(.rotate)
+                    .foregroundStyle(segment.color)
             } else {
                 Image(systemName: segment.iconName)
                     .font(.title3)
+                    .foregroundStyle(segment.color)
             }
             Text("\(segment.title) · \(value)")
                 .font(.headline)

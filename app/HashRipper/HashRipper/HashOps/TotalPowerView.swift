@@ -25,7 +25,7 @@ struct TotalPowerView: View {
 //                totalHashrate += update.hashRate
                 voltage += update.voltage ?? 0
                 if let volt = update.voltage {
-                    amps = amps + (update.power / (volt/1000))
+                    amps += (update.power / (volt/1000))
                 }
             }
         }
