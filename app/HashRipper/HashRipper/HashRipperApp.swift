@@ -41,16 +41,16 @@ struct HashRipperApp: App {
 //        .environment(\.deviceRefresher, deviceRefresher)
 //                .windowResizability(.contentSize)
 
-//        WindowGroup("Add new miner", id: "miner-onboarding") {
-//            NavigationStack {
-//                NewMinerSetupWizardView()
-//                    .frame(minWidth: 500, minHeight: 700)
-//            }
-//        }
-//        .modelContainer(SharedDatabase.shared.modelContainer)
-//        .database(SharedDatabase.shared.database)
-//        .minerClientManager(minerClientManager)
-//        .firmwareReleaseViewModel(FirmwareReleasesViewModel(database: SharedDatabase.shared.database))
-//        .newMinerScanner(newMinerScanner)
+        WindowGroup("Miner Websocket Data", id: MinerWebsocketRecordingScreen.windowGroupId) {
+            NavigationStack {
+                MinerWebsocketRecordingScreen()
+                    .frame(minWidth: 900, minHeight: 700)
+            }
+        }
+        .modelContainer(SharedDatabase.shared.modelContainer)
+        .database(SharedDatabase.shared.database)
+        .minerClientManager(minerClientManager)
+        .firmwareReleaseViewModel(FirmwareReleasesViewModel(database: SharedDatabase.shared.database))
+        .newMinerScanner(newMinerScanner)
     }
 }

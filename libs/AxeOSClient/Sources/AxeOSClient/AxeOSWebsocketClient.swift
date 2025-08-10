@@ -1,28 +1,35 @@
 //
-//  WebsocketClient.swift
-//  HashRipper
+//  AxeOSWebsocketClient.swift
+//  AxeOSClient
 //
 //  Created by Matt Sellars
 //
 
-
+import Combine
 import Foundation
+import OSLog
 
 /// Wrap the socket in an `actor` so its state is thread-safe under Swift Concurrency.
-actor WebSocketClient {
+public actor AxeOSWebsocketClient {
     private var task: URLSessionWebSocketTask?
     private let session: URLSession
 
-    init() {
+    private let messageSubject = PassthroughSubject<String, Never>()
+    public var messagePublisher: AnyPublisher<String, Never> {
+        messageSubject.eraseToAnyPublisher()
+    }
+
+    public init() {
         // Use a background-friendly configuration if you need the socket
         // to work while your app is in the background. Otherwise `.default` is fine.
         session = URLSession(configuration: .default)
     }
+
     deinit {
         task?.cancel(with: .normalClosure, reason: nil)
     }
     /// Connect to the server and start the read loop.
-    func connect(to url: URL) async {
+    public func connect(to url: URL) async {
         // Cancel an existing connection if the caller reconnects
         task?.cancel(with: .goingAway, reason: nil)
 
@@ -37,13 +44,13 @@ actor WebSocketClient {
         Task { await pingLoop(socket: newTask) }
     }
 
-    /// Send a text message
-    func send(text: String) async throws {
+    /// Send a text message - I don't know if this is supported
+    public func send(text: String) async throws {
         try await task?.send(.string(text))
     }
 
     /// Close cleanly
-    func close() {
+    public func close() {
         task?.cancel(with: .normalClosure, reason: nil)
     }
 
@@ -56,10 +63,10 @@ actor WebSocketClient {
                 let message = try await socket.receive()
                 switch message {
                 case .string(let text):
-                    print("⬇️  text: \(text)")
-//                    print("⬇️  text: \(String(data: text.data(using: .utf8)!, encoding: .utf8))")
+                    Logger.websocketsLogger.debug("[ws::received::text] \(text)")
+                    self.messageSubject.send(text)
                 case .data(let data):
-                    print("⬇️  \(data.count) bytes")
+                    Logger.websocketsLogger.debug("[ws::received::data] \(data.count) bytes")
                 @unknown default:
                     break
                 }
@@ -90,4 +97,8 @@ extension URLSessionWebSocketTask {
             }
         }
     }
+}
+
+extension Logger {
+    static let websocketsLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HashRipper", category: "AxeOSWebsocketClient")
 }

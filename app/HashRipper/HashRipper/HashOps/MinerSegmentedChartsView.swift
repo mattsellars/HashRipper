@@ -281,18 +281,6 @@ struct MinerSegmentedUpdateChartsView: View {
                     Image(systemName: "xmark")
                 }.position(x: geometry.size.width - 24, y: 18)
             }
-        }.onAppear {
-            // This was a test, move to actual miner client
-//             startWebsockets()
-        }
-    }
-
-    func startWebsockets() {
-
-        let ip = currentMiner.ipAddress
-        Task {
-            let client = WebSocketClient()
-            await client.connect(to: URL(string: "ws://\(ip)/api/ws")!)
         }
     }
 

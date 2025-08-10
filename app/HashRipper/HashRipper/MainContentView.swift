@@ -84,7 +84,8 @@ struct MainContentView: View {
                         HashOpsToolbarItems(
                             addNewMiner: addNewMiner,
                             rolloutProfile: rolloutProfile,
-                            showMinerCharts: showMinerChartsSheet
+                            showMinerCharts: showMinerChartsSheet,
+                            openDiagnosticWindow: openDiagnosticWindow,
                         )
                     case "profiles":
                         HStack {}
@@ -148,5 +149,9 @@ struct MainContentView: View {
 
     private func showMinerChartsSheet() {
         showMinerCharts = true
+    }
+
+    private func openDiagnosticWindow() {
+        openWindow(id: MinerWebsocketRecordingScreen.windowGroupId)
     }
 }

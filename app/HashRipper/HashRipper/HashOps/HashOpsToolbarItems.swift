@@ -14,7 +14,8 @@ struct HashOpsToolbarItems: View {
     var addNewMiner: () -> Void
     var rolloutProfile: () -> Void
     var showMinerCharts: () -> Void
-
+    var openDiagnosticWindow: () -> Void
+    
     var body: some View {
         HStack {
             Button(action: addNewMiner) {
@@ -56,7 +57,11 @@ struct HashOpsToolbarItems: View {
                 Image(systemName: "chart.xyaxis.line")
             }
             .help("View miner performance charts")
-            
+
+            Button(action: openDiagnosticWindow) {
+                Image(systemName: "stethoscope")
+            }
+            .help("Record websocket data from miners")
         }
     }
 

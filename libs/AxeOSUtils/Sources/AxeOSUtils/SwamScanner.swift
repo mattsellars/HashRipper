@@ -106,43 +106,6 @@ func getIPAddress() -> String? {
     return address
 }
 
-/// A simple structure to hold the IP address and the system information response.
-//public struct AxeOSSystemResponse {
-//    let ipAddress: String
-//    let axOSResponse: Data
-//}
-
-/// Asynchronously sends a GET request to "http://<ip-address>/api/system/info" and,
-/// if the response returns an HTTP 200 status code, returns an IPSystemResponse.
-/// - Parameter ip: The IP address string.
-/// - Returns: An IPSystemResponse if successful, or nil otherwise.
-//func getSystemInfo(for ip: String) async -> AxeOSSystemResponse? {
-//    guard let url = URL(string: "http://\(ip)/api/system/info") else {
-//        return nil
-//    }
-//
-//    let config = URLSessionConfiguration.default
-//    config.timeoutIntervalForRequest = 2.0
-//    let session = URLSession(configuration: config)
-//
-//    do {
-//        let (data, response) = try await session.data(from: url)
-//        if let httpResponse = response as? HTTPURLResponse,
-//           httpResponse.statusCode == 200,
-//           httpResponse.value(forHTTPHeaderField: "Content-Type") == "application/json"
-//        {
-//            return AxeOSSystemResponse(
-//                ipAddress: ip,
-//                axOSResponse: data
-//            )
-//        }
-//    } catch {
-//        // Optionally, handle networking errors here.
-//        // print("Error fetching info for \(ip): \(error)")
-//    }
-//    return nil
-//}
-
 public enum AxeOSScanError: Error {
     case localIPAddressNotFound
 }
