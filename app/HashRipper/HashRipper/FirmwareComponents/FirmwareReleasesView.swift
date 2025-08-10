@@ -33,22 +33,22 @@ struct FirmwareReleasesView: View {
     }
 
     var body: some View {
-
-        HStack {
-            List {
-                ForEach (releasesGroupedByDeviceType.keys.sorted(), id: \.self) { deviceModel in
-                    Section(header: Text("\(deviceModel) (\(viewModel.countByDeviceModel(deviceModel)) miners)")) {
-                        ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
-                            ReleaseInfoView(firmwareRelease: release)
-                                .onTapGesture {
-                                    self.selectedRelease = release
-                                }
-                        }
+        TabView {
+            ForEach(releasesGroupedByDeviceType.keys.sorted(), id: \.self) { deviceModel in
+                List {
+                    ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
+                        ReleaseInfoView(firmwareRelease: release)
+                            .onTapGesture {
+                                self.selectedRelease = release
+                            }
                     }
                 }
-
+                .tabItem {
+                    Text("\(deviceModel) (\(viewModel.countByDeviceModel(deviceModel)))")
+                }
             }
-        }.task {
+        }.padding()
+        .task {
             viewModel.updateReleasesSources()
         }
         .sheet(item: $selectedRelease, content: { release in
@@ -90,7 +90,7 @@ struct ReleaseInfoView: View {
                     Spacer()
                 }
             }
-
         }
+        .contentShape(Rectangle())
     }
 }
