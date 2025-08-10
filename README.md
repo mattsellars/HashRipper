@@ -1,7 +1,10 @@
 # HashRipper
 
 
-Work in progress macOS app to manage AxeOS based bitcoin miners.
+Work in progress macOS app to manage AxeOS based bitcoin miners. 
+
+### Important
+Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shufps/ESP-Miner-NerdQAxePlus/releases/tag/v1.0.30) due to requiring macAddress information of the miner.
 
 ## Features:
 - Uses swarm scan approach to find miners on network
