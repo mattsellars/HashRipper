@@ -27,7 +27,8 @@ Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shu
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 12 40 PM" src="https://github.com/user-attachments/assets/7114643f-26e6-405a-8982-e96375175e0d" />
 
 ### Firmware Version lookups
-<img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 12 48 PM" src="https://github.com/user-attachments/assets/011d4ab8-0be5-40b5-a9b8-cf7639e33086" />
+<img width="1853" height="1172" alt="Screenshot 2025-08-09 at 10 59 42 PM" src="https://github.com/user-attachments/assets/cd994f1a-e9f9-44ff-9633-fb53d342abc3" />
+
 
 New AxeOS Miner Device Onboarding
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 18 38 PM" src="https://github.com/user-attachments/assets/420ff9fa-5f7f-4ee4-8b9a-909ac679ed5a" />
