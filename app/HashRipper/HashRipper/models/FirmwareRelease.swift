@@ -33,6 +33,16 @@ final class FirmwareRelease: Identifiable{
 
     var device: String
 
+    @MainActor
+    func isDownloaded(fileType: FirmwareFileType, downloadsManager: FirmwareDownloadsManager) -> Bool {
+        return downloadsManager.isDownloaded(release: self, fileType: fileType)
+    }
+
+    @MainActor
+    func downloadedFilePath(fileType: FirmwareFileType, downloadsManager: FirmwareDownloadsManager) -> URL? {
+        return downloadsManager.downloadedFilePath(for: self, fileType: fileType, shouldCreateDirectory: false)
+    }
+
     init(releaseUrl: String,
          device: String,
          changeLogUrl: String,

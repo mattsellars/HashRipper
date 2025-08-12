@@ -20,6 +20,7 @@ struct FirmwareReleasesView: View {
         filter: #Predicate<FirmwareRelease> { $0.isPreRelease == false },
         sort: \FirmwareRelease.releaseDate, order: .reverse
     )
+
     private var releases: [FirmwareRelease]
 
     @State private var selectedRelease: FirmwareRelease?
@@ -38,6 +39,7 @@ struct FirmwareReleasesView: View {
                 List {
                     ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
                         ReleaseInfoView(firmwareRelease: release)
+                            .listRowSeparator(.hidden)
                             .onTapGesture {
                                 self.selectedRelease = release
                             }
@@ -47,7 +49,7 @@ struct FirmwareReleasesView: View {
                     Text("\(deviceModel) (\(viewModel.countByDeviceModel(deviceModel)))")
                 }
             }
-        }.padding()
+        }
         .task {
             viewModel.updateReleasesSources()
         }
@@ -66,31 +68,96 @@ let dateFormatter: DateFormatter = {
     df.dateStyle = .medium
     return df
 }()
+
 struct ReleaseInfoView: View {
     let firmwareRelease: FirmwareRelease
+    @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager!
 
     var body: some View {
-        HStack{
-            VStack {
-                HStack {
-                    Text("Release: ")
-                        .font(.headline)
-                    Text(firmwareRelease.name)
-                        .font(.headline)
-                    Spacer()
+        HStack(spacing: 0) {
+            Spacer().frame(width: 6)
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if firmwareRelease.isPreRelease {
+                        Text("Pre-release")
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.2))
+                            .foregroundColor(.orange)
+                            .clipShape(
+                                .rect(
+                                    topLeadingRadius: 0,
+                                    bottomLeadingRadius: 0,
+                                    bottomTrailingRadius: 4,
+                                    topTrailingRadius: 0
+                                )
+                            )
+//                            .cornerRadius(4)
+                    } else {
+                        Spacer().frame(height: 6)
+                    }
+                    Text("Firmware Release \(firmwareRelease.name)")
+                        .font(.title)
+                        .foregroundColor(.primary)
+                    
+                    HStack(spacing: 16) {
+                        Label {
+                            Text(dateFormatter.string(from: firmwareRelease.releaseDate))
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        } icon: {
+                            Image(systemName: "calendar")
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Label {
+                            Text(firmwareRelease.device)
+                                .font(.body)
+                                .foregroundColor(.secondary)
+                        } icon: {
+                            Image(systemName: "cpu")
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer().frame(height: 6)
                 }
-                HStack {
-                    Text("Date: ")
-                    Text(dateFormatter.string(from: firmwareRelease.releaseDate))
-                    Spacer()
-                }
-                HStack {
-                    Text("Device: ")
-                    Text(firmwareRelease.device)
-                    Spacer()
-                }
+                Spacer()
+            }
+            HStack {
+                downloadButton
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            Spacer().frame(width: 6)
+        }
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+    }
+    
+    @ViewBuilder
+    private var downloadButton: some View {
+        let isDownloaded = downloadsManager.areAllFilesDownloaded(release: firmwareRelease)
+        Button {
+            if isDownloaded {
+                downloadsManager.showFirmwareDirectoryInFinder(release: firmwareRelease)
+            } else {
+                downloadsManager.downloadAllFirmwareFiles(release: firmwareRelease)
+            }
+        } label: {
+            HStack {
+                Image(systemName: isDownloaded ? "folder.circle" : "arrow.down.circle")
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .foregroundStyle(Color.orange)
             }
         }
-        .contentShape(Rectangle())
+        .buttonStyle(.borderless)
+        .help(isDownloaded ? "Open in finder" : "Download firmware update files")
     }
 }
