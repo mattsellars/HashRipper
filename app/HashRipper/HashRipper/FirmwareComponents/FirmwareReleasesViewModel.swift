@@ -51,17 +51,19 @@ final class FirmwareReleasesViewModel: Sendable {
                     return [:] //([], Set<MinerDeviceGenre>())
                 }
             }
-            Task.detached { @MainActor in
-                self.modelsByGenre = minersAndGenres.reduce(into: [:], { partialResult, entry in
-                    partialResult[entry.key] = entry.value.count
-                })
-                self.minersByDeviceType = minersAndGenres.values.reduce(into: [:]) { result, miners in
-                    miners.forEach { m in
-                        var minersForDevice = result[m.minerDeviceDisplayName] ?? []
-                        minersForDevice.append(m)
-                        result[m.minerDeviceDisplayName] = minersForDevice
-                    }
+            let counts: [MinerDeviceGenre : Int]  = minersAndGenres.reduce(into: [:], { partialResult, entry in
+                partialResult[entry.key] = entry.value.count
+            })
+            let minersByModel: [DeviceModel: [Miner]] = minersAndGenres.values.reduce(into: [:]) { result, miners in
+                miners.forEach { m in
+                    var minersForDevice = result[m.minerDeviceDisplayName] ?? []
+                    minersForDevice.append(m)
+                    result[m.minerDeviceDisplayName] = minersForDevice
                 }
+            }
+            Task.detached { @MainActor in
+                self.modelsByGenre = counts
+                self.minersByDeviceType = minersByModel
 
             }
 
