@@ -63,6 +63,10 @@ class FirmwareDownloadsManager {
     init() {
         let config = URLSessionConfiguration.default
         self.urlSession = URLSession(configuration: config)
+        
+        Task { @MainActor in
+            await scanForExistingDownloads()
+        }
     }
     
     func applicationSupportDirectory() throws -> URL {
@@ -231,6 +235,152 @@ class FirmwareDownloadsManager {
         } catch {
             print("Failed to open firmware directory: \(error)")
         }
+    }
+    
+    private func scanForExistingDownloads() async {
+        do {
+            let appSupport = try applicationSupportDirectory()
+            let minerUpdatesDir = appSupport.appendingPathComponent("miner-updates")
+            
+            guard fileManager.fileExists(atPath: minerUpdatesDir.path) else { return }
+            
+            let deviceDirs = try fileManager.contentsOfDirectory(at: minerUpdatesDir, includingPropertiesForKeys: nil)
+            
+            for deviceDir in deviceDirs {
+                guard deviceDir.hasDirectoryPath else { continue }
+                let deviceName = deviceDir.lastPathComponent
+                
+                let versionDirs = try fileManager.contentsOfDirectory(at: deviceDir, includingPropertiesForKeys: nil)
+                
+                for versionDir in versionDirs {
+                    guard versionDir.hasDirectoryPath else { continue }
+                    let versionTag = versionDir.lastPathComponent
+                    
+                    let files = try fileManager.contentsOfDirectory(at: versionDir, includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey])
+                    
+                    // Group files by device/version to create complete firmware release entries
+                    var minerFile: URL?
+                    var wwwFile: URL?
+                    var releaseDate: Date?
+                    
+                    for file in files {
+                        guard !file.hasDirectoryPath else { continue }
+                        
+                        let fileName = file.lastPathComponent
+                        let fileType: FirmwareFileType?
+                        
+                        // Determine file type based on filename patterns
+                        if fileName.contains("esp-miner") || fileName.hasSuffix("-miner.bin") {
+                            fileType = .miner
+                            minerFile = file
+                        } else if fileName.contains("www") || fileName.hasSuffix("-www.bin") {
+                            fileType = .www
+                            wwwFile = file
+                        } else {
+                            fileType = nil
+                        }
+                        
+                        guard fileType != nil else { continue }
+                        
+                        // Get file date (prefer creation date, fall back to modification date)
+                        let resourceValues = try file.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                        let fileDate = resourceValues.creationDate ?? resourceValues.contentModificationDate ?? Date()
+                        
+                        // Use the earliest date found (likely when the firmware was first downloaded)
+                        if releaseDate == nil || fileDate < releaseDate! {
+                            releaseDate = fileDate
+                        }
+                    }
+                    
+                    // Only create synthetic release if we have at least one file
+                    if minerFile != nil || wwwFile != nil {
+                        let syntheticRelease = createSyntheticFirmwareRelease(
+                            device: deviceName,
+                            versionTag: versionTag,
+                            minerFileURL: minerFile,
+                            wwwFileURL: wwwFile,
+                            releaseDate: releaseDate ?? Date()
+                        )
+                        
+                        // Create download items for each file found, but only if not already tracked
+                        if let minerFile = minerFile {
+                            // Check if we already have a download for this file (by destination path or by device/version/type)
+                            let alreadyExists = downloads.contains { download in
+                                download.destinationURL == minerFile ||
+                                (download.firmwareRelease.device == deviceName &&
+                                 download.firmwareRelease.versionTag == versionTag &&
+                                 download.fileType == .miner)
+                            }
+                            
+                            if !alreadyExists {
+                                let downloadItem = FirmwareDownloadItem(
+                                    firmwareRelease: syntheticRelease,
+                                    fileType: .miner,
+                                    url: minerFile,
+                                    destinationURL: minerFile,
+                                    status: .completed,
+                                    task: nil
+                                )
+                                downloads.append(downloadItem)
+                            }
+                        }
+                        
+                        if let wwwFile = wwwFile {
+                            // Check if we already have a download for this file (by destination path or by device/version/type)
+                            let alreadyExists = downloads.contains { download in
+                                download.destinationURL == wwwFile ||
+                                (download.firmwareRelease.device == deviceName &&
+                                 download.firmwareRelease.versionTag == versionTag &&
+                                 download.fileType == .www)
+                            }
+                            
+                            if !alreadyExists {
+                                let downloadItem = FirmwareDownloadItem(
+                                    firmwareRelease: syntheticRelease,
+                                    fileType: .www,
+                                    url: wwwFile,
+                                    destinationURL: wwwFile,
+                                    status: .completed,
+                                    task: nil
+                                )
+                                downloads.append(downloadItem)
+                            }
+                        }
+                    }
+                }
+            }
+            
+            updateActiveDownloads()
+        } catch {
+            print("Failed to scan for existing downloads: \(error)")
+        }
+    }
+    
+    private func createSyntheticFirmwareRelease(device: String, versionTag: String, minerFileURL: URL?, wwwFileURL: URL?, releaseDate: Date) -> FirmwareRelease {
+        // Use actual file URLs or create placeholder URLs
+        let minerUrl = minerFileURL?.absoluteString ?? "file://missing-miner-\(versionTag).bin"
+        let wwwUrl = wwwFileURL?.absoluteString ?? "file://missing-www-\(versionTag).bin"
+        
+        return FirmwareRelease(
+            releaseUrl: "file://local-firmware",
+            device: device,
+            changeLogUrl: "file://local-firmware",
+            changeLogMarkup: "Previously downloaded firmware files",
+            name: versionTag,
+            versionTag: versionTag,
+            releaseDate: releaseDate,
+            minerBinFileUrl: minerUrl,
+            wwwBinFileUrl: wwwUrl,
+            isPreRelease: false,
+            isDraftRelease: false
+        )
+    }
+    
+    func refreshExistingDownloads() async {
+//        downloads.removeAll { download in
+//            download.status == .completed && download.url.scheme == "file"
+//        }
+        await scanForExistingDownloads()
     }
 }
 

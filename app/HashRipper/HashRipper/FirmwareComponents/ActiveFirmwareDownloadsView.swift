@@ -29,10 +29,10 @@ struct ActiveFirmwareDownloadsView: View {
                     }
                     
                     HStack {
-                        Button("Clear Completed") {
-                            downloadsManager.clearCompletedDownloads()
-                        }
-                        .disabled(downloadsManager.downloads.allSatisfy { $0.isActive })
+//                        Button("Clear Completed") {
+//                            downloadsManager.clearCompletedDownloads()
+//                        }
+//                        .disabled(downloadsManager.downloads.allSatisfy { $0.isActive })
                         
                         Spacer()
                         
@@ -44,11 +44,20 @@ struct ActiveFirmwareDownloadsView: View {
             }
             .navigationTitle("Firmware Downloads")
             .toolbar {
+//                ToolbarItem(placement: .automatic) {
+//                    Button("Clear Completed") {
+//                        downloadsManager.clearCompletedDownloads()
+//                    }
+//                    .disabled(downloadsManager.downloads.allSatisfy { $0.isActive })
+//                }
+                
                 ToolbarItem(placement: .automatic) {
-                    Button("Clear Completed") {
-                        downloadsManager.clearCompletedDownloads()
+                    Button("Refresh", systemImage: "arrow.clockwise") {
+                        Task {
+                            await downloadsManager.refreshExistingDownloads()
+                        }
                     }
-                    .disabled(downloadsManager.downloads.allSatisfy { $0.isActive })
+                    .help("Scan for firmware files on disk")
                 }
             }
         }
@@ -63,8 +72,23 @@ struct DownloadItemView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading) {
-                    Text(download.firmwareRelease.name)
-                        .font(.headline)
+                    HStack {
+                        Text(download.firmwareRelease.name)
+                            .font(.headline)
+                        
+                        if download.url.scheme == "file" {
+                            Text("Previously Downloaded")
+                                .font(.caption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.blue.opacity(0.2))
+                                .foregroundColor(.blue)
+                                .cornerRadius(3)
+                        }
+                        
+                        Spacer()
+                    }
+                    
                     Text("\(download.fileType.displayName) • \(download.firmwareRelease.device)")
                         .font(.caption)
                         .foregroundColor(.secondary)
@@ -132,7 +156,7 @@ struct DownloadItemView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             case .completed:
-                Button("Show in Finder", systemImage: "folder") {
+                Button("Show in Finder") {
                     downloadsManager.showInFinder(release: download.firmwareRelease, fileType: download.fileType)
                 }
                 .buttonStyle(.bordered)
