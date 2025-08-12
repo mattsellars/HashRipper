@@ -45,7 +45,7 @@ struct MinerProfileTileView: View {
                     Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.parasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
                         .font(.headline)
                 } else {
-                    Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>)")")
+                    Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>")")
                         .font(.headline)
                 }
 
@@ -73,7 +73,7 @@ struct MinerProfileTileView: View {
                         Text("\(account).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.fallbackParasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
                             .font(.headline)
                     } else {
-                        Text("\(account).\(self.minerName ?? "<miner-name-here>)")")
+                        Text("\(account).\(self.minerName ?? "<miner-name-here>")")
                             .font(.headline)
                     }
                 }
