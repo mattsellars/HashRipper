@@ -93,7 +93,6 @@ struct ReleaseInfoView: View {
                                     topTrailingRadius: 0
                                 )
                             )
-//                            .cornerRadius(4)
                     } else {
                         Spacer().frame(height: 6)
                     }
@@ -143,21 +142,46 @@ struct ReleaseInfoView: View {
     @ViewBuilder
     private var downloadButton: some View {
         let isDownloaded = downloadsManager.areAllFilesDownloaded(release: firmwareRelease)
-        Button {
+        
+        HStack(spacing: 8) {
             if isDownloaded {
-                downloadsManager.showFirmwareDirectoryInFinder(release: firmwareRelease)
+                Button {
+                    downloadsManager.showFirmwareDirectoryInFinder(release: firmwareRelease)
+                } label: {
+                    Image(systemName: "folder.circle")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .foregroundStyle(Color.orange)
+                }
+                .buttonStyle(.borderless)
+                .help("Open in finder")
+                
+                Button {
+                    do {
+                        try downloadsManager.deleteDownloadedFiles(for: firmwareRelease)
+                    } catch {
+                        print("Failed to delete files: \(error)")
+                    }
+                } label: {
+                    Image(systemName: "trash.circle")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .foregroundStyle(Color.red.opacity(0.7))
+                }
+                .buttonStyle(.borderless)
+                .help("Delete downloaded files")
             } else {
-                downloadsManager.downloadAllFirmwareFiles(release: firmwareRelease)
-            }
-        } label: {
-            HStack {
-                Image(systemName: isDownloaded ? "folder.circle" : "arrow.down.circle")
-                    .resizable()
-                    .frame(width: 24, height: 24)
-                    .foregroundStyle(Color.orange)
+                Button {
+                    downloadsManager.downloadAllFirmwareFiles(release: firmwareRelease)
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .resizable()
+                        .frame(width: 24, height: 24)
+                        .foregroundStyle(Color.orange)
+                }
+                .buttonStyle(.borderless)
+                .help("Download firmware update files")
             }
         }
-        .buttonStyle(.borderless)
-        .help(isDownloaded ? "Open in finder" : "Download firmware update files")
     }
 }

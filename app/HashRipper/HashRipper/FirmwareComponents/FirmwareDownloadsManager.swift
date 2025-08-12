@@ -24,6 +24,7 @@ struct FirmwareDownloadItem: Identifiable {
     let destinationURL: URL
     var status: DownloadStatus = .pending
     var task: URLSessionDownloadTask?
+    let addedDate: Date
     
     var fileName: String {
         url.lastPathComponent
@@ -36,6 +37,16 @@ struct FirmwareDownloadItem: Identifiable {
         default:
             return false
         }
+    }
+    
+    init(firmwareRelease: FirmwareRelease, fileType: FirmwareFileType, url: URL, destinationURL: URL, status: DownloadStatus = .pending, task: URLSessionDownloadTask? = nil, addedDate: Date = Date()) {
+        self.firmwareRelease = firmwareRelease
+        self.fileType = fileType
+        self.url = url
+        self.destinationURL = destinationURL
+        self.status = status
+        self.task = task
+        self.addedDate = addedDate
     }
 }
 
@@ -53,17 +64,22 @@ enum FirmwareFileType: String, CaseIterable {
 
 @MainActor
 @Observable
-class FirmwareDownloadsManager {
+class FirmwareDownloadsManager: NSObject {
     private let urlSession: URLSession
     private let fileManager = FileManager.default
     
-    private(set) var downloads: [FirmwareDownloadItem] = []
+    private var _downloads: [FirmwareDownloadItem] = []
     private(set) var activeDownloads: [FirmwareDownloadItem] = []
     
-    init() {
+    var downloads: [FirmwareDownloadItem] {
+        _downloads.sorted { $0.addedDate > $1.addedDate }
+    }
+    
+    override init() {
         let config = URLSessionConfiguration.default
         self.urlSession = URLSession(configuration: config)
-        
+        super.init()
+
         Task { @MainActor in
             await scanForExistingDownloads()
         }
@@ -123,7 +139,7 @@ class FirmwareDownloadsManager {
             let destinationURL = downloadDir.appendingPathComponent(url.lastPathComponent)
             
             // Check if already downloading
-            if downloads.contains(where: { $0.url == url && $0.isActive }) {
+            if _downloads.contains(where: { $0.url == url && $0.isActive }) {
                 return
             }
             
@@ -157,48 +173,25 @@ class FirmwareDownloadsManager {
             }
             
             downloadItem.task = task
-            downloads.append(downloadItem)
+            _downloads.append(downloadItem)
             updateActiveDownloads()
-            
-            task.resume()
+
             updateDownloadStatus(for: downloadItem.id, status: .downloading(progress: 0.0))
-            
-            // Monitor progress
-            monitorProgress(for: downloadItem.id, task: task)
-            
+            task.delegate = self
+            task.resume()
         } catch {
             print("Failed to create download directory: \(error)")
         }
     }
     
-    private func monitorProgress(for downloadId: UUID, task: URLSessionDownloadTask) {
-        Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
-            Task { @MainActor in
-                guard let downloadIndex = self.downloads.firstIndex(where: { $0.id == downloadId }),
-                      self.downloads[downloadIndex].isActive else {
-                    timer.invalidate()
-                    return
-                }
-                
-//                if let progress = task.progress.fractionCompleted {
-                    self.updateDownloadStatus(for: downloadId, status: .downloading(progress: task.progress.fractionCompleted))
-//                }
-                
-                if task.state == .completed || task.state == .canceling {
-                    timer.invalidate()
-                }
-            }
-        }
-    }
-    
     private func updateDownloadStatus(for downloadId: UUID, status: DownloadStatus) {
-        guard let index = downloads.firstIndex(where: { $0.id == downloadId }) else { return }
-        downloads[index].status = status
+        guard let index = _downloads.firstIndex(where: { $0.id == downloadId }) else { return }
+        _downloads[index].status = status
         updateActiveDownloads()
     }
     
     private func updateActiveDownloads() {
-        activeDownloads = downloads.filter { $0.isActive }
+        activeDownloads = _downloads.filter { $0.isActive }
     }
     
     func retryDownload(_ downloadItem: FirmwareDownloadItem) {
@@ -212,7 +205,7 @@ class FirmwareDownloadsManager {
     }
     
     func clearCompletedDownloads() {
-        downloads.removeAll { download in
+        _downloads.removeAll { download in
             switch download.status {
             case .completed, .cancelled:
                 return true
@@ -235,6 +228,21 @@ class FirmwareDownloadsManager {
         } catch {
             print("Failed to open firmware directory: \(error)")
         }
+    }
+    
+    func deleteDownloadedFiles(for release: FirmwareRelease) throws {
+        let downloadDir = try downloadDirectory(for: release, shouldCreateDirectory: false)
+        
+        // Remove the entire directory for this release
+        try fileManager.removeItem(at: downloadDir)
+        
+        // Remove corresponding download items from the list
+        _downloads.removeAll { download in
+            download.firmwareRelease.device == release.device &&
+            download.firmwareRelease.versionTag == release.versionTag
+        }
+        
+        updateActiveDownloads()
     }
     
     private func scanForExistingDownloads() async {
@@ -305,7 +313,7 @@ class FirmwareDownloadsManager {
                         // Create download items for each file found, but only if not already tracked
                         if let minerFile = minerFile {
                             // Check if we already have a download for this file (by destination path or by device/version/type)
-                            let alreadyExists = downloads.contains { download in
+                            let alreadyExists = _downloads.contains { download in
                                 download.destinationURL == minerFile ||
                                 (download.firmwareRelease.device == deviceName &&
                                  download.firmwareRelease.versionTag == versionTag &&
@@ -319,15 +327,16 @@ class FirmwareDownloadsManager {
                                     url: minerFile,
                                     destinationURL: minerFile,
                                     status: .completed,
-                                    task: nil
+                                    task: nil,
+                                    addedDate: releaseDate ?? Date()
                                 )
-                                downloads.append(downloadItem)
+                                _downloads.append(downloadItem)
                             }
                         }
                         
                         if let wwwFile = wwwFile {
                             // Check if we already have a download for this file (by destination path or by device/version/type)
-                            let alreadyExists = downloads.contains { download in
+                            let alreadyExists = _downloads.contains { download in
                                 download.destinationURL == wwwFile ||
                                 (download.firmwareRelease.device == deviceName &&
                                  download.firmwareRelease.versionTag == versionTag &&
@@ -341,9 +350,10 @@ class FirmwareDownloadsManager {
                                     url: wwwFile,
                                     destinationURL: wwwFile,
                                     status: .completed,
-                                    task: nil
+                                    task: nil,
+                                    addedDate: releaseDate ?? Date()
                                 )
-                                downloads.append(downloadItem)
+                                _downloads.append(downloadItem)
                             }
                         }
                     }
@@ -377,10 +387,32 @@ class FirmwareDownloadsManager {
     }
     
     func refreshExistingDownloads() async {
-//        downloads.removeAll { download in
-//            download.status == .completed && download.url.scheme == "file"
-//        }
         await scanForExistingDownloads()
+    }
+}
+
+extension FirmwareDownloadsManager: URLSessionDownloadDelegate {
+    nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // NO OP
+    }
+    
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        Task { @MainActor in
+            guard let download = self.downloads.first(where: {
+                $0.task?.taskIdentifier == downloadTask.taskIdentifier
+
+            }) else {
+                return
+            }
+
+            updateDownloadStatus(for: download.id, status: .downloading(progress: downloadTask.progress.fractionCompleted))
+        }
     }
 }
 

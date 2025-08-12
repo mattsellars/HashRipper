@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ActiveFirmwareDownloadsView: View {
     @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager!
+    @State private var previousDownloadCount = 0
 
     static let windowGroupId = "active-firmware-downloads"
     
@@ -22,9 +23,24 @@ struct ActiveFirmwareDownloadsView: View {
                         description: Text("No firmware downloads have been started yet.")
                     )
                 } else {
-                    List {
-                        ForEach(downloadsManager.downloads) { download in
-                            DownloadItemView(download: download)
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(downloadsManager.downloads) { download in
+                                DownloadItemView(download: download)
+                                    .id(download.id)
+                            }
+                        }
+                        .onChange(of: downloadsManager.downloads.count) { oldCount, newCount in
+                            if newCount > previousDownloadCount && !downloadsManager.downloads.isEmpty {
+                                // New download added, scroll to the top (newest download)
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    proxy.scrollTo(downloadsManager.downloads.first?.id, anchor: .top)
+                                }
+                            }
+                            previousDownloadCount = newCount
+                        }
+                        .onAppear {
+                            previousDownloadCount = downloadsManager.downloads.count
                         }
                     }
                     
