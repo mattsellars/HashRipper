@@ -25,6 +25,13 @@ struct FirmwareReleasesToolbar: View {
                 Image(systemName: "arrow.down.circle")
             }
             .help("Show firmware downloads")
+            
+            Divider()
+                .frame(height: 16)
+            
+            Toggle("Pre-releases", isOn: viewModel.includePreReleases)
+                .toggleStyle(.checkbox)
+                .help("Include pre-release firmware versions")
         }
     }
 }

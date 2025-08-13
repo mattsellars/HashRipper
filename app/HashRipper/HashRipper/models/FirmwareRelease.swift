@@ -11,6 +11,7 @@ import SwiftData
 final class FirmwareRelease: Identifiable{
     @Attribute(.unique)
     var minerBinFileUrl: String
+    var minerBinFileSize: Int
 
     var releaseUrl: String
     var changeLogUrl: String
@@ -24,6 +25,7 @@ final class FirmwareRelease: Identifiable{
     var versionTag: String
     var releaseDate: Date
     var wwwBinFileUrl: String
+    var wwwBinFileSize: Int
     var isPreRelease: Bool
     var isDraftRelease: Bool
 
@@ -32,6 +34,24 @@ final class FirmwareRelease: Identifiable{
     }
 
     var device: String
+
+    var firmwareFilename: String {
+        guard let fileName = minerBinFileUrl.split(separator: "/").last else {
+            return "Firmware File"
+        }
+        
+        let fileNameString = String(fileName)
+        return fileNameString.removingPercentEncoding ?? fileNameString
+    }
+
+    var wwwFilename: String {
+        guard let filename = wwwBinFileUrl.split(separator: "/").last else {
+            return "WWW File"
+        }
+        
+        let filenameString = String(filename)
+        return filenameString.removingPercentEncoding ?? filenameString
+    }
 
     @MainActor
     func isDownloaded(fileType: FirmwareFileType, downloadsManager: FirmwareDownloadsManager) -> Bool {
@@ -51,7 +71,9 @@ final class FirmwareRelease: Identifiable{
          versionTag: String,
          releaseDate: Date,
          minerBinFileUrl: String,
+         minerBinFileSize: Int,
          wwwBinFileUrl: String,
+         wwwBinFileSize: Int,
          isPreRelease: Bool,
          isDraftRelease: Bool
     ) {
@@ -63,7 +85,9 @@ final class FirmwareRelease: Identifiable{
         self.versionTag = versionTag
         self.releaseDate = releaseDate
         self.minerBinFileUrl = minerBinFileUrl
+        self.minerBinFileSize = minerBinFileSize
         self.wwwBinFileUrl = wwwBinFileUrl
+        self.wwwBinFileSize = wwwBinFileSize
         self.isPreRelease = isPreRelease
         self.isDraftRelease = isDraftRelease
     }

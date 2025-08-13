@@ -380,7 +380,9 @@ class FirmwareDownloadsManager: NSObject {
             versionTag: versionTag,
             releaseDate: releaseDate,
             minerBinFileUrl: minerUrl,
+            minerBinFileSize: 0,
             wwwBinFileUrl: wwwUrl,
+            wwwBinFileSize: 0,
             isPreRelease: false,
             isDraftRelease: false
         )

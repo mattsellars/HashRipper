@@ -15,6 +15,15 @@ final class FirmwareReleasesViewModel: Sendable {
     let database: any Database
 
     var isLoading: Bool = false
+    
+    var showPreReleases: Bool = false
+
+    var includePreReleases: Binding<Bool> {
+            Binding(
+                get: { self.showPreReleases },
+                set: { self.showPreReleases = $0 }
+            )
+        }
 
     init(database: any Database) {
         self.database = database
@@ -87,7 +96,21 @@ final class FirmwareReleasesViewModel: Sendable {
                                 if
                                     let minerBin = releaseAssets.first(where: { $0.name == "esp-miner.bin" }),
                                     let wwwBinAsset = releaseAssets.first(where: { $0.name == "www.bin" }) {
-                                    let release = FirmwareRelease(releaseUrl: releaseInfo.url, device: "Bitaxe", changeLogUrl: releaseInfo.changeLog, changeLogMarkup: releaseInfo.body, name: releaseInfo.name, versionTag: releaseInfo.tag, releaseDate: releaseInfo.publishedAt, minerBinFileUrl: minerBin.browserDownloadUrl, wwwBinFileUrl: wwwBinAsset.browserDownloadUrl, isPreRelease: releaseInfo.prerelease, isDraftRelease: releaseInfo.draft)
+                                    let release = FirmwareRelease(
+                                        releaseUrl: releaseInfo.url,
+                                        device: "Bitaxe",
+                                        changeLogUrl: releaseInfo.changeLog,
+                                        changeLogMarkup: releaseInfo.body,
+                                        name: releaseInfo.name,
+                                        versionTag: releaseInfo.tag,
+                                        releaseDate: releaseInfo.publishedAt,
+                                        minerBinFileUrl: minerBin.browserDownloadUrl,
+                                        minerBinFileSize: minerBin.size,
+                                        wwwBinFileUrl: wwwBinAsset.browserDownloadUrl,
+                                        wwwBinFileSize: wwwBinAsset.size,
+                                        isPreRelease: releaseInfo.prerelease,
+                                        isDraftRelease: releaseInfo.draft
+                                    )
                                     context.insert(release)
                                 }
                             }
@@ -107,7 +130,20 @@ final class FirmwareReleasesViewModel: Sendable {
                                     releaseAssets.forEach({ deviceAsset in
                                         let minerAsset = deviceAsset.binAsset
                                         let wwwAsset = deviceAsset.wwwAsset
-                                        let release = FirmwareRelease(releaseUrl: releaseInfo.url, device: deviceAsset.deviceModel, changeLogUrl: releaseInfo.changeLog, changeLogMarkup: releaseInfo.body, name: releaseInfo.name, versionTag: releaseInfo.tag, releaseDate: releaseInfo.publishedAt, minerBinFileUrl: minerAsset.browserDownloadUrl, wwwBinFileUrl: wwwAsset.browserDownloadUrl, isPreRelease: releaseInfo.prerelease, isDraftRelease: releaseInfo.draft)
+                                        let release = FirmwareRelease(
+                                            releaseUrl: releaseInfo.url,
+                                            device: deviceAsset.deviceModel,
+                                            changeLogUrl: releaseInfo.changeLog,
+                                            changeLogMarkup: releaseInfo.body,
+                                            name: releaseInfo.name,
+                                            versionTag: releaseInfo.tag,
+                                            releaseDate: releaseInfo.publishedAt,
+                                            minerBinFileUrl: minerAsset.browserDownloadUrl,
+                                            minerBinFileSize: minerAsset.size,
+                                            wwwBinFileUrl: wwwAsset.browserDownloadUrl,
+                                            wwwBinFileSize: wwwAsset.size,
+                                            isPreRelease: releaseInfo.prerelease,
+                                            isDraftRelease: releaseInfo.draft)
                                         context.insert(release)
                                     })
                                 }

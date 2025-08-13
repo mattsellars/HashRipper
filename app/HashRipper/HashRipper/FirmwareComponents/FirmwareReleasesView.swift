@@ -15,15 +15,18 @@ struct FirmwareReleasesView: View {
     @Environment(\.firmwareReleaseViewModel)
     private var viewModel: FirmwareReleasesViewModel
 
-    
-    @Query(
-        filter: #Predicate<FirmwareRelease> { $0.isPreRelease == false },
-        sort: \FirmwareRelease.releaseDate, order: .reverse
-    )
-
-    private var releases: [FirmwareRelease]
-
     @State private var selectedRelease: FirmwareRelease?
+    
+    @Query(sort: \FirmwareRelease.releaseDate, order: .reverse)
+    private var allReleases: [FirmwareRelease]
+    
+    private var releases: [FirmwareRelease] {
+        if viewModel.showPreReleases {
+            return allReleases
+        } else {
+            return allReleases.filter { !$0.isPreRelease }
+        }
+    }
 
     var releasesGroupedByDeviceType: [String: [FirmwareRelease]] {
         return releases.reduce(into: [:]) { partialResult, release in
@@ -36,17 +39,26 @@ struct FirmwareReleasesView: View {
     var body: some View {
         TabView {
             ForEach(releasesGroupedByDeviceType.keys.sorted(), id: \.self) { deviceModel in
-                List {
-                    ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
-                        ReleaseInfoView(firmwareRelease: release)
-                            .listRowSeparator(.hidden)
-                            .onTapGesture {
-                                self.selectedRelease = release
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
+                            ReleaseInfoView(firmwareRelease: release)
+                                .listRowSeparator(.hidden)
+                                .onTapGesture {
+                                    self.selectedRelease = release
+                                }
+                        }
+                    }
+                    .onChange(of: viewModel.showPreReleases) { _, _ in
+                        if (releases.count > 0) {
+                            withAnimation {
+                                proxy.scrollTo(releases.first?.id ?? "")
                             }
+                        }
                     }
                 }
                 .tabItem {
-                    Text("\(deviceModel) (\(viewModel.countByDeviceModel(deviceModel)))")
+                    Text("\(deviceModel) (\(deviceCount(for: deviceModel)))")
                 }
             }
         }
@@ -60,6 +72,10 @@ struct FirmwareReleasesView: View {
             .presentationSizing(.automatic)
         })
     }
+    
+    private func deviceCount(for deviceModel: String) -> Int {
+        return releasesGroupedByDeviceType[deviceModel]?.count ?? 0
+    }
 
 }
 
@@ -69,13 +85,20 @@ let dateFormatter: DateFormatter = {
     return df
 }()
 
+func formatFileSize(_ sizeInBytes: Int) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.allowedUnits = [.useKB, .useMB]
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: Int64(sizeInBytes))
+}
+
 struct ReleaseInfoView: View {
     let firmwareRelease: FirmwareRelease
     @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager!
 
     var body: some View {
         HStack(spacing: 0) {
-            Spacer().frame(width: 6)
+//            Spacer().frame(width: 6)
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
                     if firmwareRelease.isPreRelease {
@@ -96,10 +119,11 @@ struct ReleaseInfoView: View {
                     } else {
                         Spacer().frame(height: 6)
                     }
-                    Text("Firmware Release \(firmwareRelease.name)")
-                        .font(.title)
+                    Text(try! AttributedString(markdown: "### Firmware Release: __\(firmwareRelease.name)__"))
+//                        .font(.title3)
                         .foregroundColor(.primary)
-                    
+                        .padding(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 0))
+
                     HStack(spacing: 16) {
                         Label {
                             Text(dateFormatter.string(from: firmwareRelease.releaseDate))
@@ -118,7 +142,28 @@ struct ReleaseInfoView: View {
                             Image(systemName: "cpu")
                                 .foregroundColor(.secondary)
                         }
+                        Spacer()
+                        HStack {
+                            Text("\(firmwareRelease.firmwareFilename): ")
+                                .font(.body)
+                                .bold()
+                                .foregroundColor(.secondary)
+                            Text(formatFileSize(firmwareRelease.minerBinFileSize))
+                                .font(.body)
+                                .fontWeight(.thin)
+                                .foregroundColor(.secondary)
+
+                            Text("\(firmwareRelease.wwwFilename): ")
+                                .font(.body)
+                                .bold()
+                                .foregroundColor(.secondary)
+                            Text(formatFileSize(firmwareRelease.wwwBinFileSize))
+                                .font(.body)
+                                .fontWeight(.thin)
+                                .foregroundColor(.secondary)
+                        }
                     }
+                    .padding(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 0))
                     Spacer().frame(height: 6)
                 }
                 Spacer()
