@@ -13,6 +13,14 @@ struct HashRipperApp: App {
     var newMinerScanner = NewMinerScanner(database: SharedDatabase.shared.database)
     var minerClientManager = MinerClientManager(database: SharedDatabase.shared.database)
     var firmwareDownloadsManager = FirmwareDownloadsManager()
+    var firmwareDeploymentManager: FirmwareDeploymentManager
+    
+    init() {
+        firmwareDeploymentManager = FirmwareDeploymentManager(
+            clientManager: minerClientManager,
+            downloadsManager: firmwareDownloadsManager
+        )
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -29,6 +37,7 @@ struct HashRipperApp: App {
         .minerClientManager(minerClientManager)
         .firmwareReleaseViewModel(minerClientManager.firmwareReleaseViewModel)
         .firmwareDownloadsManager(firmwareDownloadsManager)
+        .firmwareDeploymentManager(firmwareDeploymentManager)
         .newMinerScanner(newMinerScanner)
         
 //        .windowStyle(HiddenTitleBarWindowStyle())
@@ -54,6 +63,7 @@ struct HashRipperApp: App {
         .minerClientManager(minerClientManager)
         .firmwareReleaseViewModel(FirmwareReleasesViewModel(database: SharedDatabase.shared.database))
         .firmwareDownloadsManager(firmwareDownloadsManager)
+        .firmwareDeploymentManager(firmwareDeploymentManager)
         .newMinerScanner(newMinerScanner)
         
         Window("Firmware Downloads", id: ActiveFirmwareDownloadsView.windowGroupId) {
@@ -64,5 +74,6 @@ struct HashRipperApp: App {
         .database(SharedDatabase.shared.database)
         .firmwareDownloadsManager(firmwareDownloadsManager)
         .defaultSize(width: 600, height: 400)
+        
     }
 }

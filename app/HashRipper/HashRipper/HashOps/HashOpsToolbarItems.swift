@@ -51,8 +51,8 @@ struct HashOpsToolbarItems: View {
             Button(action: rolloutProfile) {
                 Image(systemName: "iphone.and.arrow.forward.inward")
             }
-            .help("Choose a miner profile to rollout to your miners")
-            
+            .help("Deploy a miner profile to your miners")
+
             Button(action: showMinerCharts) {
                 Image(systemName: "chart.xyaxis.line")
             }

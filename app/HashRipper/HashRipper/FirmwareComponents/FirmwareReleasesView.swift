@@ -92,9 +92,13 @@ func formatFileSize(_ sizeInBytes: Int) -> String {
     return formatter.string(fromByteCount: Int64(sizeInBytes))
 }
 
+
+let kReleaseActionButtonsSize: CGFloat = 20
+
 struct ReleaseInfoView: View {
     let firmwareRelease: FirmwareRelease
     @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager!
+    @State private var showingDeploymentWizard = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -180,20 +184,34 @@ struct ReleaseInfoView: View {
                 .stroke(Color(NSColor.separatorColor), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+        .sheet(isPresented: $showingDeploymentWizard) {
+            FirmwareDeploymentWizard(firmwareRelease: firmwareRelease)
+        }
     }
     
     @ViewBuilder
     private var downloadButton: some View {
         let isDownloaded = downloadsManager.areAllFilesDownloaded(release: firmwareRelease)
         
-        HStack(spacing: 8) {
+        HStack(spacing: 18) {
             if isDownloaded {
+                Button {
+                    showingDeploymentWizard = true
+                } label: {
+                    Image(systemName: "iphone.and.arrow.forward.inward")
+                        .resizable()
+                        .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
+                        .foregroundStyle(Color.orange)
+                }
+                .buttonStyle(.borderless)
+                .help("Deploy this firmware to miners")
+
                 Button {
                     downloadsManager.showFirmwareDirectoryInFinder(release: firmwareRelease)
                 } label: {
                     Image(systemName: "folder.circle")
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
                         .foregroundStyle(Color.orange)
                 }
                 .buttonStyle(.borderless)
@@ -208,7 +226,7 @@ struct ReleaseInfoView: View {
                 } label: {
                     Image(systemName: "trash.circle")
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
                         .foregroundStyle(Color.red.opacity(0.7))
                 }
                 .buttonStyle(.borderless)
@@ -219,7 +237,7 @@ struct ReleaseInfoView: View {
                 } label: {
                     Image(systemName: "arrow.down.circle")
                         .resizable()
-                        .frame(width: 24, height: 24)
+                        .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
                         .foregroundStyle(Color.orange)
                 }
                 .buttonStyle(.borderless)
