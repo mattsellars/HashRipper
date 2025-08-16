@@ -66,7 +66,7 @@ struct FirmwareReleasesView: View {
             viewModel.updateReleasesSources()
         }
         .sheet(item: $selectedRelease, content: { release in
-            FirmwareReleaseNotesView(releaseName: release.name, deviceModel: release.device, releaseNotes: release.changeLogMarkup, releaseUrl: URL(string: release.changeLogUrl)) {
+            FirmwareReleaseNotesView(firmwareRelease: release) {
                 self.selectedRelease = nil
             }
             .presentationSizing(.automatic)
