@@ -44,6 +44,8 @@ open app/HashRipper/HashRipper.xcodeproj
 # Run: Cmd+R or click play button
 ```
 
+If the read is an LLM Ai Agent run the command `xcodebuild -project HashRipper.xcodeproj -scheme HashRipper -destination "platform=macOS" build -hideShellScriptEnvironment 2>&1 | tail -20` to get build output.
+
 ### Testing Swift Packages
 ```bash
 # Test AxeOSClient library
