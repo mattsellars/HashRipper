@@ -42,6 +42,65 @@ final class FirmwareReleasesViewModel: Sendable {
         return minersByDeviceType[model]?.count ?? 0
     }
 
+    func hasFirmwareUpdate(minerVersion: String, minerType: MinerType) async -> Bool {
+        guard let latestRelease = await getLatestFirmwareRelease(for: minerType) else {
+            return false
+        }
+        
+        return compareVersions(current: minerVersion, latest: latestRelease.versionTag)
+    }
+    
+    func getLatestFirmwareRelease(for minerType: MinerType) async -> FirmwareRelease? {
+        let releases: [FirmwareRelease]
+        do {
+            releases = try await database.withModelContext { context in
+                try context.fetch(FetchDescriptor<FirmwareRelease>())
+            }
+        } catch {
+            return nil
+        }
+        
+        let compatibleReleases = releases.filter { release in
+            switch minerType.deviceGenre {
+            case .bitaxe:
+                return release.device == "Bitaxe"
+            case .nerdQAxe:
+                guard let deviceModel = getDeviceModelFromMinerType(minerType) else {
+                    return false
+                }
+                return release.device == deviceModel
+            case .unknown:
+                return false
+            }
+        }
+        
+        let filteredReleases = showPreReleases ? compatibleReleases : compatibleReleases.filter { !$0.isPreRelease }
+        
+        return filteredReleases
+            .filter { !$0.isDraftRelease }
+            .sorted { $0.releaseDate > $1.releaseDate }
+            .first
+    }
+    
+    private func getDeviceModelFromMinerType(_ minerType: MinerType) -> String? {
+        switch minerType {
+        case .NerdQAxePlus:
+            return "NerdQAxe+"
+        case .NerdQAxePlusPlus:
+            return "NerdQAxe++"
+        case .NerdHaxe:
+            return "NerdHaxe-γ"
+        case .NerdOCTAXE:
+            return "NerdOCTAXE-γ"
+        default:
+            return nil
+        }
+    }
+    
+    private func compareVersions(current: String, latest: String) -> Bool {
+        return current != latest && !current.isEmpty && !latest.isEmpty
+    }
+
     @MainActor
     func updateReleasesSources() {
         self.isLoading = true

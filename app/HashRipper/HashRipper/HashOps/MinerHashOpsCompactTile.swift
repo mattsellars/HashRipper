@@ -13,6 +13,7 @@ struct MinerHashOpsCompactTile: View {
     static let tileWidth: CGFloat = 350
     @Environment(\.minerClientManager) var minerClientManager
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.firmwareReleaseViewModel) var firmwareViewModel: FirmwareReleasesViewModel
 
     var miner: Miner
 
@@ -21,7 +22,15 @@ struct MinerHashOpsCompactTile: View {
 
     @State
     var showRestartFailedDialog: Bool = false
-
+    
+    @State
+    var showFirmwareReleaseNotes: Bool = false
+    
+    @State
+    var hasAvailableFirmwareUpdate: Bool = false
+    
+    @State
+    var availableFirmwareRelease: FirmwareRelease? = nil
 
     var mostRecentUpdate: MinerUpdate? {
         miner.minerUpdates.last ?? nil
@@ -68,6 +77,18 @@ struct MinerHashOpsCompactTile: View {
         }
 
         return isParasitePool(mostRecentUpdate.stratumURL)
+    }
+    
+    @MainActor
+    private func checkForFirmwareUpdate() async {
+        guard let currentVersion = mostRecentUpdate?.minerOSVersion else {
+            hasAvailableFirmwareUpdate = false
+            availableFirmwareRelease = nil
+            return
+        }
+        
+        availableFirmwareRelease = await firmwareViewModel.getLatestFirmwareRelease(for: miner.minerType)
+        hasAvailableFirmwareUpdate = await firmwareViewModel.hasFirmwareUpdate(minerVersion: currentVersion, minerType: miner.minerType)
     }
 
     var body: some View {
@@ -123,7 +144,14 @@ struct MinerHashOpsCompactTile: View {
         .padding(12)
 //        .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .topLeading) {
-            MinerIPHeaderView(miner: miner, isMinerOnParasite: isMinerOnParasite())
+            MinerIPHeaderView(
+                miner: miner, 
+                isMinerOnParasite: isMinerOnParasite(),
+                hasFirmwareUpdate: hasAvailableFirmwareUpdate,
+                onFirmwareUpdateTap: {
+                    showFirmwareReleaseNotes = true
+                }
+            )
 //            HStack {
 //                HStack {
 //                    Link(miner.ipAddress, destination: URL(string: "http://\(miner.ipAddress)/")!)
@@ -180,6 +208,21 @@ struct MinerHashOpsCompactTile: View {
             }
         }
         .background(.ultraThinMaterial)
+        .sheet(isPresented: $showFirmwareReleaseNotes) {
+            if let firmwareRelease = availableFirmwareRelease {
+                FirmwareReleaseNotesView(firmwareRelease: firmwareRelease) {
+                    showFirmwareReleaseNotes = false
+                }
+            }
+        }
+        .task {
+            await checkForFirmwareUpdate()
+        }
+        .onChange(of: mostRecentUpdate?.minerOSVersion) { _, _ in
+            Task {
+                await checkForFirmwareUpdate()
+            }
+        }
 //        .frame(width: 350)
     }
 }
@@ -217,11 +260,30 @@ struct ParasitePoolIndicatorView: View {
     }
 }
 
+struct FirmwareUpdateIndicatorView: View {
+    let onTap: () -> Void
+    
+    var body: some View {
+        Button(action: onTap) {
+            Image(systemName: "arrow.up.circle.fill")
+                .resizable()
+                .frame(width: 12, height: 12)
+                .foregroundColor(.purple)
+                .background(Color.white)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Firmware update available - tap to view")
+    }
+}
+
 struct MinerIPHeaderView: View {
     @Environment(\.colorScheme) var colorScheme
 
     var miner: Miner
     let isMinerOnParasite: Bool
+    let hasFirmwareUpdate: Bool
+    let onFirmwareUpdateTap: () -> Void
 
     var body: some View {
         HStack {
@@ -255,6 +317,10 @@ struct MinerIPHeaderView: View {
 
                 if isMinerOnParasite {
                     ParasitePoolIndicatorView()
+                }
+                
+                if hasFirmwareUpdate {
+                    FirmwareUpdateIndicatorView(onTap: onFirmwareUpdateTap)
                 }
             }
             .padding(.horizontal, 4)
