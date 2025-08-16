@@ -10,11 +10,10 @@ Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shu
 - Uses swarm scan approach to find miners on network
 - Quick overview of miners
 - Setup miner profiles to quickly swap/try mining pools
-- Shows firmware releases for the devices you have
+- Shows firmware releases for the devices you have, downloaded firmware management, and firmware deployments.
 - Simple onboarding for new miner devices by using your saved profiles
 
 ## Future Features
-- Firmware download and rollouts/rollbacks
 - ASIC health monitoring for multi-asic devices
 - Profile export to share pool configs
 
@@ -46,6 +45,18 @@ Step 3. Deploy
 
 ### Record Websocket data to a file
 <img width="1450" height="947" alt="Screenshot 2025-08-09 at 10 21 12 PM" src="https://github.com/user-attachments/assets/b75ea837-dfaa-4e78-a1c1-b8ef1ffeb086" />
+
+### Firmware deployments
+Step 1. Pick how you want to deploy
+<img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 54 21 PM" src="https://github.com/user-attachments/assets/d2a8d55e-22dd-4a84-b1fa-1cfe66ecaa49" />
+
+Step 2. Pick the miners compatible with the selected firmware
+<img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 54 31 PM" src="https://github.com/user-attachments/assets/06582d71-d846-4fff-a39d-2342589da24b" />
+
+Step 3. Roll it out!
+<img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 56 41 PM" src="https://github.com/user-attachments/assets/9f271416-d969-40ad-9a91-2321c1650e01" />
+<img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 57 58 PM" src="https://github.com/user-attachments/assets/33eefe58-f943-41ad-b253-adbafaa0cc03" />
+
 
 
 At some point I'll build a release binary but until then if you want to give it a go
