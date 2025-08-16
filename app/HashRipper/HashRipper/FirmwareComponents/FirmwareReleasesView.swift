@@ -98,9 +98,8 @@ struct ReleaseInfoView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-//            Spacer().frame(width: 6)
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 6) {
                     if firmwareRelease.isPreRelease {
                         Text("Pre-release")
                             .font(.caption)
@@ -119,10 +118,9 @@ struct ReleaseInfoView: View {
                     } else {
                         Spacer().frame(height: 6)
                     }
-                    Text(try! AttributedString(markdown: "### Firmware Release: __\(firmwareRelease.name)__"))
-//                        .font(.title3)
+                    Text(try! AttributedString(markdown: "## Firmware Release: __\(firmwareRelease.name)__"))
                         .foregroundColor(.primary)
-                        .padding(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 0))
+                        .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
 
                     HStack(spacing: 16) {
                         Label {
@@ -163,7 +161,7 @@ struct ReleaseInfoView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    .padding(EdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 0))
+                    .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 0))
                     Spacer().frame(height: 6)
                 }
                 Spacer()
