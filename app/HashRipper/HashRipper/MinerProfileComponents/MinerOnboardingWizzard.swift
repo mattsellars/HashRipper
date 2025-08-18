@@ -11,7 +11,6 @@ import SwiftData
 import SwiftUI
 import SwiftData
 import AxeOSClient
-import AxeOSUtils
 
 enum ProfileSelection: Hashable {
     case existing(MinerProfileTemplate)

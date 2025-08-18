@@ -4,10 +4,10 @@
 //
 //  Created by Matt Sellars
 //
+
+import AxeOSClient
 import Foundation
 import SwiftData
-import AxeOSUtils
-import AxeOSClient
 import SwiftUI
 
 typealias IPAddress = String

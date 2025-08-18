@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C91EC66F2DAF5E4F00432FA4 /* AxeOSUtils in Frameworks */ = {isa = PBXBuildFile; productRef = C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */; };
 		C923FFA72DC8434A00D85C1D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C923FFA62DC8434A00D85C1D /* MarkdownUI */; };
+		C9F459FA2E52C218003D0B1B /* AxeOSClient in Frameworks */ = {isa = PBXBuildFile; productRef = C9F459F92E52C218003D0B1B /* AxeOSClient */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -57,7 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C91EC66F2DAF5E4F00432FA4 /* AxeOSUtils in Frameworks */,
+				C9F459FA2E52C218003D0B1B /* AxeOSClient in Frameworks */,
 				C923FFA72DC8434A00D85C1D /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -127,8 +127,8 @@
 			);
 			name = HashRipper;
 			packageProductDependencies = (
-				C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */,
 				C923FFA62DC8434A00D85C1D /* MarkdownUI */,
+				C9F459F92E52C218003D0B1B /* AxeOSClient */,
 			);
 			productName = HashRipper;
 			productReference = C91EC6392DAF564B00432FA4 /* HashRipper.app */;
@@ -213,8 +213,8 @@
 			mainGroup = C91EC6302DAF564B00432FA4;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */,
 				C923FFA52DC8434A00D85C1D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				C9F4596F2E52C198003D0B1B /* XCLocalSwiftPackageReference "../../libs/AxeOSClient" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C91EC63A2DAF564B00432FA4 /* Products */;
@@ -566,9 +566,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */ = {
+		C9F4596F2E52C198003D0B1B /* XCLocalSwiftPackageReference "../../libs/AxeOSClient" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../libs/AxeOSUtils;
+			relativePath = ../../libs/AxeOSClient;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -584,15 +584,15 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		C91EC66E2DAF5E4F00432FA4 /* AxeOSUtils */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C91EC66C2DAF5DED00432FA4 /* XCLocalSwiftPackageReference "../../libs/AxeOSUtils" */;
-			productName = AxeOSUtils;
-		};
 		C923FFA62DC8434A00D85C1D /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = C923FFA52DC8434A00D85C1D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		C9F459F92E52C218003D0B1B /* AxeOSClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C9F4596F2E52C198003D0B1B /* XCLocalSwiftPackageReference "../../libs/AxeOSClient" */;
+			productName = AxeOSClient;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

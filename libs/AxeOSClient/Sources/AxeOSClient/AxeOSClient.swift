@@ -10,8 +10,8 @@ public enum AxeOSClientError: Error {
 }
 
 
-public class AxeOSClient: Identifiable {
-    private var urlSession: URLSession
+final public class AxeOSClient: Identifiable {
+    private let urlSession: URLSession
 
     public var id: String { deviceIpAddress }
     
@@ -25,9 +25,9 @@ public class AxeOSClient: Identifiable {
         self.urlSession = urlSession
     }
 
-    public func configureURLSession(_ urlSession: URLSession) {
-        self.urlSession = urlSession
-    }
+//    public func configureURLSession(_ urlSession: URLSession) {
+//        self.urlSession = urlSession
+//    }
 
     public func restartClient() async -> Result<Bool, AxeOSClientError> {
         do {
