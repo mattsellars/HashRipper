@@ -63,13 +63,13 @@ struct IPAddressCalculator {
     }
 }
 
-func getIPAddress() -> String? {
-    var address : String?
+func getMyIPAddress() -> [String] {
+    var addresses : [String] = []
 
     // Get list of all interfaces on the local machine:
     var ifaddr : UnsafeMutablePointer<ifaddrs>?
-    guard getifaddrs(&ifaddr) == 0 else { return nil }
-    guard let firstAddr = ifaddr else { return nil }
+    guard getifaddrs(&ifaddr) == 0 else { return addresses }
+    guard let firstAddr = ifaddr else { return addresses }
 
     // For each interface ...
     for ifptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
@@ -93,9 +93,9 @@ func getIPAddress() -> String? {
                             &hostname, socklen_t(hostname.count),
                             nil, socklen_t(0), NI_NUMERICHOST)
                 let maybeAddress = String(cString: hostname)
-                if (maybeAddress.split(separator: ".").count == 4) {
-                    address = maybeAddress
-                    print("Address: \(address)")
+                if (maybeAddress.split(separator: ".").compactMap({ Int($0)} ).count == 4) {
+                    addresses.append(maybeAddress)
+                    print("-> Network interface ip Address found: \(maybeAddress)")
                 }
 
             }
@@ -103,7 +103,7 @@ func getIPAddress() -> String? {
     }
     freeifaddrs(ifaddr)
 
-    return address
+    return addresses
 }
 
 public enum AxeOSScanError: Error {
@@ -135,24 +135,29 @@ public class AxeOSDevicesScanner {
     private init(){}
 
     public func executeSwarmScan(knownMinerIps: [String] = []) async throws -> [DiscoveredDevice] {
-        guard let myIpAddress = getIPAddress() else {
+        let myIpAddresses = getMyIPAddress()
+        guard myIpAddresses.isEmpty == false else {
             throw AxeOSScanError.localIPAddressNotFound
         }
 
-        let ipaddresses = generator.calculateIpRange(ip: myIpAddress)?.filter { $0 != myIpAddress && !knownMinerIps.contains($0) } ?? []
-        //        var responses: [(AxeOSClient, AxeOSSystemResponse)] = []
+        var ipaddressesToCheck: [String] = []
+        for myIpAddress in myIpAddresses {
+            let ipaddresses = generator.calculateIpRange(ip: myIpAddress)?.filter { $0 != myIpAddress && !knownMinerIps.contains($0) } ?? []
+            ipaddressesToCheck.append(contentsOf: ipaddresses)
+        }
+
         var responses: [DiscoveredDevice] = []
 
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 2.0
         let session = URLSession(configuration: config)
-        let possibleDevices: [IPAddress : AxeOSClient] = ipaddresses.reduce(into: [:]) { result, ipAddress in
+        let possibleDevices: [IPAddress : AxeOSClient] = ipaddressesToCheck.reduce(into: [:]) { result, ipAddress in
             result[ipAddress] = AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
         }
 
         // issue scan requests concurrently
         await withTaskGroup(of: ScanEntry.self) { group in
-            for ipAddress in ipaddresses {
+            for ipAddress in ipaddressesToCheck {
                 group.addTask {
                     let client = possibleDevices[ipAddress] ?? AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
                     let response = await client.getSystemInfo()

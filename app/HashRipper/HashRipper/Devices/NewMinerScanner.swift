@@ -14,11 +14,8 @@ typealias IPAddress = String
 
 
 class NewMinerScanner {
-//    let modelContainer: ModelContainer
     let database: Database
-//    var refreshInterval: TimeInterval = 5
     var rescanInterval: TimeInterval = 300 // 5 min
-//    var deviceClients: [IPAddress : AxeOSClient] = [:]
 
     let connectedDeviceUrlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -49,9 +46,6 @@ class NewMinerScanner {
             })
 
         })
-//        Task {
-//            await rescanDevices()
-//        }
     }
 
     func scanForNewMiner() async -> Result<NewDevice, Error>  {
@@ -83,12 +77,6 @@ class NewMinerScanner {
 
                 )
 
-//                Task.detached { @MainActor in
-//                    devices.forEach({ d in
-//                        let c = AxeOSClient(deviceIpAddress: d.client.deviceIpAddress, urlSession: URLSession.shared)
-//                        self.deviceClients[c.deviceIpAddress] = c
-//                    })
-//                }
                 guard devices.count > 0 else {
                     print("Swarm scan found no new devices")
                     return
@@ -96,17 +84,8 @@ class NewMinerScanner {
 
                 print("Swarm scanning - model context created")
                 await database.withModelContext({ modelContext in
-//                    var totalPower: Double = 0.0
-//                    var totalHashrate: Double = 0.0
-
                     devices.forEach { device in
                         let ipAddress = device.client.deviceIpAddress
-//                        let existingMiner: AxeMiner? = try? modelContext.fetch(FetchDescriptor<AxeMiner>(predicate: #Predicate { $0.lastKnownIpAddress == ipAddress })).first
-//                        let existingStatus: AxeMinerConnectionStatus? = try? modelContext.fetch(FetchDescriptor<AxeMinerConnectionStatus>(predicate: #Predicate { $0.minerIpAddress == ipAddress})).first
-
-//                        if let existingMiner = existingMiner {
-////                            modelContext.delete(existingMiner)
-//                        }
                         let info = device.info
                         let miner = Miner(
                             hostName: device.info.hostname,
@@ -144,21 +123,9 @@ class NewMinerScanner {
                         modelContext.insert(minerUpdate)
                         miner.minerUpdates.append(minerUpdate)
 
-//                        totalPower += minerInfo.power
-//                        totalHashrate += minerInfo.hashRate
 
-//                        if let existingStatus = existingStatus {
-////                            modelContext.delete(existingStatus)
-//                        }
-//                        modelContext.insert(AxeMinerConnectionStatus(
-//                            minerIpAddress: ipAddress,
-//                            connectionStatus: MINER_CONNECTED_STATUS))
                     }
 
-//                    modelContext.insert(AggregateStats(
-//                        hashRate: totalHashrate,
-//                        power: totalPower)
-//                    )
                     do {
                         try modelContext.save()
                     } catch(let error) {
@@ -171,7 +138,6 @@ class NewMinerScanner {
                         self.lastUpdate = Date()
                     })
                 }
-//                return devices
             } catch (let error) {
                 Task.detached { @MainActor in
                     self.isScanning = false
