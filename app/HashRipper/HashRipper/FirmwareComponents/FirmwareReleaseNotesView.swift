@@ -32,7 +32,7 @@ struct FirmwareReleaseNotesView: View {
                 Text("\(firmwareRelease.name) Firmware Release Notes")
                     .font(.largeTitle)
                 Spacer()
-                if let url = URL(string: firmwareRelease.releaseUrl) {
+                if let url = URL(string: firmwareRelease.changeLogUrl) {
                     Link(destination: url) {
                         Image(systemName: "arrow.up.forward.square")
                     }.help(Text("Open in browser"))
