@@ -156,6 +156,7 @@ final public class AxeOSClient: Identifiable {
             }
             
         } catch let error {
+            print("‼️ [AxeOSClient] Error uploading \(fileType): \(String(describing: error))")
             return .failure(.unknownError("Failed to upload \(fileType): \(String(describing: error))"))
         }
     }
@@ -178,9 +179,13 @@ final public class AxeOSClient: Identifiable {
             
             // Create a separate session with our delegate
             let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 120.0
-            let uploadSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
-            
+            config.timeoutIntervalForRequest = 180.0
+            let uploadSession = URLSession(
+                configuration: config,
+                delegate: delegate,
+                delegateQueue: OperationQueue.main
+            )
+
             var uploadRequest = request
             uploadRequest.httpBody = nil // Remove body since we'll provide it as Data parameter
             
@@ -224,14 +229,15 @@ private class OTAUploadDelegate: NSObject, URLSessionTaskDelegate, @unchecked Se
         self.completion = completion
         super.init()
     }
-    
+
+    @objc
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         let progress = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
-        DispatchQueue.main.async {
-            self.progressCallback(progress)
-        }
+
+        self.progressCallback(progress)
     }
-    
+
+    @objc
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         defer {
             session.invalidateAndCancel()

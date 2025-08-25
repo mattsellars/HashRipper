@@ -149,6 +149,7 @@ struct FirmwareDeploymentWizard: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.firmwareDeploymentManager) private var deploymentManager: FirmwareDeploymentManager!
+    @Environment(\.minerClientManager) private var clientManager: MinerClientManager!
     
     @State private var model: FirmwareDeploymentWizardModel
     
@@ -174,10 +175,14 @@ struct FirmwareDeploymentWizard: View {
         .frame(width: 800, height: 800)
         .onAppear {
             model.deploymentManager = deploymentManager
+            // Pause watchdog monitoring while firmware deployment wizard is open
+//            clientManager.pauseWatchDogMonitoring()
         }
         .onDisappear {
             // Clean up completed deployments when wizard is dismissed
             deploymentManager.clearCompletedDeployments()
+            // Resume watchdog monitoring when wizard is dismissed
+//            clientManager.resumeWatchDogMonitoring()
         }
         .onChange(of: model.stage) { _, newValue in
             if newValue == .deployment {
@@ -559,19 +564,18 @@ private struct DeploymentScreen: View {
         allMiners.filter { model.selectedMinerIPs.contains($0.ipAddress) }
     }
     
-    private var relevantDeployments: [MinerDeploymentItem] {
-        deploymentManager.deployments.filter { deployment in
-            model.selectedMinerIPs.contains(deployment.miner.ipAddress) &&
-            deployment.firmwareRelease.versionTag == model.firmwareRelease.versionTag
-        }
-        .sorted { $0.miner.hostName < $1.miner.hostName }
-    }
-    
     let columns = [
         GridItem(.adaptive(minimum: 280, maximum: 280)),
     ]
     
     var body: some View {
+        @Bindable var deploymentManager = deploymentManager
+        var deployments = deploymentManager.deployments.filter { deployment in
+            model.selectedMinerIPs.contains(deployment.miner.ipAddress) &&
+            deployment.firmwareRelease.versionTag == model.firmwareRelease.versionTag
+        }
+        .sorted { $0.miner.hostName < $1.miner.hostName }
+
         VStack(alignment: .leading, spacing: 16) {
             // Status Header
             HStack {
@@ -585,14 +589,14 @@ private struct DeploymentScreen: View {
             }
             
             // Progress Overview
-            if !relevantDeployments.isEmpty {
+            if !deployments.isEmpty {
                 progressOverviewView
             }
             
             // Individual Miner Status
             ScrollView {
                 LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(relevantDeployments) { deployment in
+                    ForEach(deployments) { deployment in
                         DeploymentStatusTile(deployment: deployment)
                     }
                 }
@@ -613,32 +617,48 @@ private struct DeploymentScreen: View {
             Text("Overall Progress:")
                 .font(.subheadline)
                 .fontWeight(.medium)
-            
-            // Calculate granular progress (2 upload steps + restart per miner)
-            let totalSteps = relevantDeployments.count * 3 // miner upload + www upload + restart
-            let completedSteps = relevantDeployments.reduce(0) { total, deployment in
+            @Bindable var deploymentManager = deploymentManager
+            let deployments = deploymentManager.deployments.filter { deployment in
+                model.selectedMinerIPs.contains(deployment.miner.ipAddress) &&
+                deployment.firmwareRelease.versionTag == model.firmwareRelease.versionTag
+            }
+            .sorted { $0.miner.hostName < $1.miner.hostName }
+
+            // Calculate granular progress (2 upload steps)
+            let totalSteps = deployments.count * 2 // miner upload + www upload
+
+            let completedSteps: Int = deployments.reduce(0) { completedMinerSteps, deployment in
                 switch deployment.status {
-                case .pending, .preparingMiner:
-                    return total + 0
-                case .uploadingMiner, .minerUploadComplete:
-                    return total + 1
-                case .preparingWww, .uploadingWww, .wwwUploadComplete:
-                    return total + 2
-                case .waitingForRestart, .monitoringRestart, .restartingManually, .completed:
-                    return total + 3
+                case .pending, .uploadingMiner:
+                    return completedMinerSteps
+                case  .minerUploadComplete, .uploadingWww:
+                    return completedMinerSteps + 1
+                case .wwwUploadComplete:
+                    return completedMinerSteps + 2
+                case let .monitorRestart(_, phase):
+                    fallthrough
+                case let .restartingManually(phase):
+                    switch (phase) {
+                    case .firmware:
+                        return completedMinerSteps
+                    case .webInterface:
+                        return completedMinerSteps + 1
+                    }
                 case .failed, .cancelled:
-                    return total + 0
+                    return completedMinerSteps + 0
+                case .completed:
+                    return completedMinerSteps + 2
                 }
             }
-            
+
             let progressValue = totalSteps > 0 ? Double(completedSteps) / Double(totalSteps) : 0.0
-            let completedMiners = relevantDeployments.filter { $0.status == .completed }.count
-            
+            let completedMiners = deployments.filter { $0.status == .completed }.count
+
             HStack {
                 ProgressView(value: progressValue)
                     .progressViewStyle(LinearProgressViewStyle(tint: .orange))
                 
-                Text("\(completedMiners)/\(relevantDeployments.count) miners")
+                Text("\(completedMiners)/\(deployments.count) miners")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -690,7 +710,7 @@ private struct MinerSelectionTile: View {
 }
 
 private struct DeploymentStatusTile: View {
-    let deployment: MinerDeploymentItem
+    @State var deployment: MinerDeploymentItem
     @Environment(\.firmwareDeploymentManager) private var deploymentManager: FirmwareDeploymentManager!
     
     var body: some View {
@@ -744,24 +764,14 @@ private struct DeploymentStatusTile: View {
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
-            } else if case .waitingForRestart(let seconds) = deployment.status {
-                HStack {
-                    GridLoadingView()
-                    Text("Waiting for restart (\(seconds)s)")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-            } else if case .monitoringRestart(let seconds, let hashRate) = deployment.status {
+            } else if case .monitorRestart = deployment.status {
                 VStack(spacing: 4) {
                     HStack {
                         GridLoadingView()
-                        Text("Monitoring restart (\(seconds)s)")
+                        Text("Checking miner after update")
                             .font(.caption)
                             .foregroundColor(.orange)
                     }
-                    Text("Hash rate: \(String(format: "%.1f", hashRate)) GH/s")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
                 }
             }
             

@@ -161,7 +161,7 @@ class FileLogger {
     }
 
     private func writeToFile(_ message: String) {
-        if let data = message.data(using: .utf8) {
+        if let data = "\(message)\n".data(using: .utf8) {
             if FileManager.default.fileExists(atPath: fileURL.path) {
                 if let handle = try? FileHandle(forWritingTo: fileURL) {
                     handle.seekToEndOfFile()

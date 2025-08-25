@@ -8,24 +8,26 @@
 import Foundation
 import SwiftUI
 
-enum DeploymentStatus: Equatable {
+enum MajorUploadPhase {
+    case firmware
+    case webInterface
+}
+
+indirect enum DeploymentStatus: Equatable {
     case pending
-    case preparingMiner(progress: Double)
     case uploadingMiner(progress: Double)
     case minerUploadComplete
-    case preparingWww(progress: Double)
     case uploadingWww(progress: Double)
     case wwwUploadComplete
-    case waitingForRestart(secondsRemaining: Int)
-    case monitoringRestart(secondsRemaining: Int, hashRate: Double)
-    case restartingManually
+    case monitorRestart(secondsRemaining: Int, phase: MajorUploadPhase)
+    case restartingManually(phase: MajorUploadPhase)
     case completed
-    case failed(error: String)
+    case failed(error: String, phase: MajorUploadPhase)
     case cancelled
     
     var isActive: Bool {
         switch self {
-        case .pending, .preparingMiner, .uploadingMiner, .minerUploadComplete, .preparingWww, .uploadingWww, .wwwUploadComplete, .waitingForRestart, .monitoringRestart, .restartingManually:
+        case .pending, .uploadingMiner, .minerUploadComplete, .uploadingWww, .wwwUploadComplete, .monitorRestart, .restartingManually:
             return true
         default:
             return false
@@ -36,27 +38,27 @@ enum DeploymentStatus: Equatable {
         switch self {
         case .pending:
             return "Waiting to start"
-        case .preparingMiner:
-            return "Preparing miner firmware"
         case .uploadingMiner(let progress):
+            if progress == 0 {
+                return "Preparing miner firmware"
+            }
             return "Uploading miner firmware (\(Int(progress * 100))%)"
         case .minerUploadComplete:
             return "Miner firmware uploaded"
-        case .preparingWww:
-            return "Preparing web interface"
         case .uploadingWww(let progress):
+            if progress == 0 {
+                return "Preparing web interface"
+            }
             return "Uploading web interface (\(Int(progress * 100))%)"
         case .wwwUploadComplete:
             return "Web interface uploaded"
-        case .waitingForRestart(let seconds):
-            return "Waiting for restart (\(seconds)s remaining)"
-        case .monitoringRestart(let seconds, let hashRate):
-            return "Monitoring restart (\(seconds)s remaining, hashrate: \(String(format: "%.1f", hashRate)))"
+        case let .monitorRestart(seconds, _):
+            return "(\(seconds)s remaining)"
         case .restartingManually:
             return "Restarting device manually"
         case .completed:
             return "Completed successfully"
-        case .failed(let error):
+        case .failed(let error, _):
             return "Failed: \(error)"
         case .cancelled:
             return "Cancelled"
@@ -67,13 +69,11 @@ enum DeploymentStatus: Equatable {
         switch self {
         case .pending:
             return "clock"
-        case .preparingMiner, .preparingWww:
-            return "gearshape.2"
         case .uploadingMiner, .uploadingWww:
             return "arrow.up.circle"
         case .minerUploadComplete, .wwwUploadComplete:
             return "checkmark.circle.fill"
-        case .waitingForRestart, .monitoringRestart:
+        case .monitorRestart:
             return "clock.arrow.circlepath"
         case .restartingManually:
             return "restart.circle"
@@ -90,11 +90,11 @@ enum DeploymentStatus: Equatable {
         switch self {
         case .pending:
             return .secondary
-        case .preparingMiner, .preparingWww, .uploadingMiner, .uploadingWww:
+        case .uploadingMiner, .uploadingWww:
             return .orange
         case .minerUploadComplete, .wwwUploadComplete:
             return .green
-        case .waitingForRestart, .monitoringRestart, .restartingManually:
+        case .monitorRestart, .restartingManually:
             return .orange
         case .completed:
             return .green
@@ -106,13 +106,15 @@ enum DeploymentStatus: Equatable {
     }
 }
 
-struct MinerDeploymentItem: Identifiable {
-    let id = UUID()
+@Observable
+class MinerDeploymentItem: Identifiable {
+    let id: String // Use miner's MAC address as ID
     let miner: Miner
     let firmwareRelease: FirmwareRelease
-    var status: DeploymentStatus = .pending
+
     let addedDate: Date
-    
+
+    var status: DeploymentStatus = .pending
     // Track which files have been successfully uploaded
     var minerFirmwareUploaded: Bool = false
     var wwwFirmwareUploaded: Bool = false
@@ -128,6 +130,7 @@ struct MinerDeploymentItem: Identifiable {
     }
     
     init(miner: Miner, firmwareRelease: FirmwareRelease, status: DeploymentStatus = .pending, addedDate: Date = Date()) {
+        self.id = miner.macAddress // Use MAC address as stable ID
         self.miner = miner
         self.firmwareRelease = firmwareRelease
         self.status = status

@@ -20,13 +20,10 @@ class FirmwareDeploymentManager: NSObject {
     private let clientManager: MinerClientManager
     private let downloadsManager: FirmwareDownloadsManager
     
-    private var _deployments: [MinerDeploymentItem] = []
-    var deployments: [MinerDeploymentItem] {
-        _deployments.sorted { $0.addedDate > $1.addedDate }
-    }
-    
+    private(set) var deployments: [MinerDeploymentItem] = []
+
     var activeDeployments: [MinerDeploymentItem] {
-        _deployments.filter { $0.status.isActive }
+        deployments.filter { $0.status.isActive }
     }
     
     var configuration = DeploymentConfiguration()
@@ -38,7 +35,7 @@ class FirmwareDeploymentManager: NSObject {
     }
 
     func reset() {
-        _deployments = []
+        deployments = []
     }
 
     func startDeployment(miners: [Miner], firmwareRelease: FirmwareRelease) async {
@@ -58,7 +55,7 @@ class FirmwareDeploymentManager: NSObject {
             MinerDeploymentItem(miner: miner, firmwareRelease: firmwareRelease)
         }
         
-        _deployments.append(contentsOf: deploymentItems)
+        deployments.append(contentsOf: deploymentItems)
         
         // Start deployment based on mode
         switch configuration.deploymentMode {
@@ -95,7 +92,7 @@ class FirmwareDeploymentManager: NSObject {
         // Get file paths
         guard let minerFilePath = downloadsManager.downloadedFilePath(for: release, fileType: .miner, shouldCreateDirectory: false),
               let wwwFilePath = downloadsManager.downloadedFilePath(for: release, fileType: .www, shouldCreateDirectory: false) else {
-            updateDeploymentStatus(for: item.id, status: .failed(error: "Firmware files not found"))
+            updateDeploymentStatus(for: item, status: .failed(error: "Firmware files not found", phase: .firmware))
             return
         }
         
@@ -104,49 +101,53 @@ class FirmwareDeploymentManager: NSObject {
         
         var retryAttempts = 0
         let maxRetries = configuration.retryCount
-        
+
+        var uploadPhase: MajorUploadPhase = .firmware
         while retryAttempts <= maxRetries {
             do {
                 // Step 1: Upload miner firmware (if not already uploaded)
-                if !(getCurrentDeployment(for: item.id)?.minerFirmwareUploaded ?? false) {
-                    updateDeploymentStatus(for: item.id, status: .preparingMiner(progress: 0.0))
-                    updateDeploymentStatus(for: item.id, status: .uploadingMiner(progress: 0.0))
+                if !item.minerFirmwareUploaded {
+                    updateDeploymentStatus(for: item, status: .uploadingMiner(progress: 0.0))
+                    try await Task.sleep(nanoseconds: 200_000_000)
                     
                     let minerUploadResult = await client.uploadFirmware(from: minerFilePath) { progress in
-                        self.updateDeploymentStatus(for: item.id, status: .uploadingMiner(progress: progress))
+                        self.updateDeploymentStatus(for: item, status: .uploadingMiner(progress: progress))
                     }
-                    
+
                     switch minerUploadResult {
                     case .success:
                         print("Successfully uploaded miner firmware to \(miner.ipAddress)")
-                        updateMinerFirmwareStatus(for: item.id, uploaded: true)
-                        updateDeploymentStatus(for: item.id, status: .waitingForRestart(secondsRemaining: Int(configuration.restartTimeout)))
-
+                        updateMinerFirmwareStatus(for: item, uploaded: true)
+                        self.updateDeploymentStatus(for: item, status: .minerUploadComplete)
+                        uploadPhase = .webInterface
                         // Small delay between uploads
-                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 seconds
                     case .failure(let error):
                         throw DeploymentError.minerUploadFailed(error)
                     }
                 }
-                
-                // Step 2: Upload www firmware (if not already uploaded)
-                if !(getCurrentDeployment(for: item.id)?.wwwFirmwareUploaded ?? false) {
-                    updateDeploymentStatus(for: item.id, status: .preparingWww(progress: 0.0))
-                    updateDeploymentStatus(for: item.id, status: .uploadingWww(progress: 0.0))
-                    
+
+                // Step 2: Monitor for restart if both files uploaded and monitoring enabled
+                // Brief pause to show completion state, then start monitoring
+                await monitorMinerRestart(item: item, client: client, phase: uploadPhase)
+
+                // Step 3: Upload www firmware (if not already uploaded)
+                if !item.wwwFirmwareUploaded {
+                    updateDeploymentStatus(for: item, status: .uploadingWww(progress: 0.0))
+                    try await Task.sleep(nanoseconds: 200_000_000)
+
                     let wwwUploadResult = await client.uploadWebInterface(from: wwwFilePath) { progress in
-                        self.updateDeploymentStatus(for: item.id, status: .uploadingWww(progress: progress))
+                        self.updateDeploymentStatus(for: item, status: .uploadingWww(progress: progress))
                     }
                     
                     switch wwwUploadResult {
                     case .success:
                         print("Successfully uploaded www firmware to \(miner.ipAddress)")
-                        updateWwwFirmwareStatus(for: item.id, uploaded: true)
-                        updateDeploymentStatus(for: item.id, status: .waitingForRestart(secondsRemaining: Int(self.configuration.restartTimeout)))
+                        updateWwwFirmwareStatus(for: item, uploaded: true)
+                        self.updateDeploymentStatus(for: item, status: .wwwUploadComplete)
 
-                        
                         // Small delay before restart monitoring
-                        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 seconds
                     case .failure(let error):
                         throw DeploymentError.wwwUploadFailed(error)
                     }
@@ -155,10 +156,10 @@ class FirmwareDeploymentManager: NSObject {
                 // Step 3: Monitor for restart if both files uploaded and monitoring enabled
                 if configuration.enableRestartMonitoring {
                     // Brief pause to show completion state, then start monitoring
-                    await monitorMinerRestart(item: item, client: client)
+                    await monitorMinerRestart(item: item, client: client, phase: uploadPhase)
                 }
                 
-                updateDeploymentStatus(for: item.id, status: .completed)
+                updateDeploymentStatus(for: item, status: .completed)
                 break // Success - exit retry loop
                 
             } catch {
@@ -174,7 +175,7 @@ class FirmwareDeploymentManager: NSObject {
                     default:
                         errorMessage = "Failed after \(maxRetries) retries: \(error.localizedDescription)"
                     }
-                    updateDeploymentStatus(for: item.id, status: .failed(error: errorMessage))
+                    updateDeploymentStatus(for: item, status: .failed(error: errorMessage, phase: uploadPhase))
                     break
                 } else {
                     print("Deployment attempt \(retryAttempts) failed for \(miner.ipAddress), retrying...")
@@ -184,79 +185,85 @@ class FirmwareDeploymentManager: NSObject {
             }
         }
     }
-    
-    private func getCurrentDeployment(for deploymentId: UUID) -> MinerDeploymentItem? {
-        return _deployments.first { $0.id == deploymentId }
+
+    private func updateMinerFirmwareStatus(for deployment: MinerDeploymentItem, uploaded: Bool) {
+        EnsureUISafe {
+            deployment.minerFirmwareUploaded = uploaded
+        }
     }
     
-    private func updateMinerFirmwareStatus(for deploymentId: UUID, uploaded: Bool) {
-        guard let index = _deployments.firstIndex(where: { $0.id == deploymentId }) else { return }
-        _deployments[index].minerFirmwareUploaded = uploaded
+    private func updateWwwFirmwareStatus(for deployment: MinerDeploymentItem, uploaded: Bool) {
+        EnsureUISafe {
+            deployment.wwwFirmwareUploaded = uploaded
+        }
     }
     
-    private func updateWwwFirmwareStatus(for deploymentId: UUID, uploaded: Bool) {
-        guard let index = _deployments.firstIndex(where: { $0.id == deploymentId }) else { return }
-        _deployments[index].wwwFirmwareUploaded = uploaded
-    }
-    
-    private func monitorMinerRestart(item: MinerDeploymentItem, client: AxeOSClient) async {
+    private func monitorMinerRestart(item: MinerDeploymentItem, client: AxeOSClient, phase: MajorUploadPhase) async {
         let startTime = Date()
         let timeout = configuration.restartTimeout
-        var lastHashRate: Double = 0.0
         
         // Set initial waiting status
         let initialSeconds = Int(timeout)
-        updateDeploymentStatus(for: item.id, status: .waitingForRestart(secondsRemaining: initialSeconds))
-        
-        while Date().timeIntervalSince(startTime) < timeout {
+
+        var restartObserved = false
+        while abs(Date().timeIntervalSince(startTime)) < timeout && !restartObserved {
             let remainingSeconds = Int(timeout - Date().timeIntervalSince(startTime))
-            
-            // Try to get system info to check hash rate
+            updateDeploymentStatus(for: item, status: .monitorRestart(secondsRemaining: remainingSeconds, phase: phase))
+
+            // Try to get system info to check for temp reading
             let systemInfoResult = await client.getSystemInfo()
             switch systemInfoResult {
             case .success(let systemInfo):
-                lastHashRate = systemInfo.hashRate ?? 0.0
-                updateDeploymentStatus(for: item.id, status: .monitoringRestart(secondsRemaining: remainingSeconds, hashRate: lastHashRate))
-                
-                // If hash rate is greater than 0, miner has restarted successfully
-                if lastHashRate > 0.0 {
-                    print("Miner at \(item.miner.ipAddress) restarted successfully with hash rate: \(lastHashRate)")
-                    return
+                if let temp = systemInfo.temp, temp > 0 {
+                    restartObserved = true
+                    print("✅ Miner at \(item.miner.ipAddress) updated \(phase == .firmware ? "firmware" : "web interface")")
+                    switch phase {
+                    case .firmware:
+//                        updateDeploymentStatus(for: item, status: .uploadingWww(progress: 0))
+                        break
+                    case .webInterface:
+                        updateDeploymentStatus(for: item, status: .completed)
+                    }
                 }
+
             case .failure(let error):
                 print("Failed to get system info from \(item.miner.ipAddress): \(error), continuing to monitor...")
-                updateDeploymentStatus(for: item.id, status: .waitingForRestart(secondsRemaining: remainingSeconds))
             }
-            
-            // Wait 5 seconds before next check
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
+
+            if !restartObserved {
+                let remainingSeconds = Int(timeout - Date().timeIntervalSince(startTime))
+                updateDeploymentStatus(for: item, status: .monitorRestart(secondsRemaining: remainingSeconds, phase: phase))
+                // Wait 5 seconds before next check
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
         }
-        
-        // Timeout reached, manually restart the miner
-        print("Timeout reached for \(item.miner.ipAddress), manually restarting...")
-        updateDeploymentStatus(for: item.id, status: .restartingManually)
-        
-        let restartResult = await client.restartClient()
-        switch restartResult {
-        case .success:
-            print("Successfully manually restarted miner at \(item.miner.ipAddress)")
-        case .failure(let error):
-            print("Warning: Failed to manually restart miner at \(item.miner.ipAddress): \(error)")
+
+        if !restartObserved {
+            // Timeout reached, manually restart the miner
+            print("Timeout reached for \(item.miner.ipAddress), manually restarting...")
+            updateDeploymentStatus(for: item, status: .restartingManually(phase: phase))
+
+            let restartResult = await client.restartClient()
+            switch restartResult {
+            case .success:
+                print("Successfully manually restarted miner at \(item.miner.ipAddress)")
+            case .failure(let error):
+                print("Warning: Failed to manually restart miner at \(item.miner.ipAddress): \(error)")
+            }
+
+            // Wait a bit after manual restart
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
         }
-        
-        // Wait a bit after manual restart
-        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
     }
     
-    private func updateDeploymentStatus(for deploymentId: UUID, status: DeploymentStatus) {
-        Task { @MainActor in
-            guard let index = _deployments.firstIndex(where: { $0.id == deploymentId }) else { return }
-            _deployments[index].status = status
+    private func updateDeploymentStatus(for item: MinerDeploymentItem, status: DeploymentStatus) {
+        EnsureUISafe {
+            item.status = status
         }
     }
     
     func cancelDeployment(_ deployment: MinerDeploymentItem) {
-        updateDeploymentStatus(for: deployment.id, status: .cancelled)
+        updateDeploymentStatus(for: deployment, status: .cancelled)
     }
     
     func retryDeployment(_ deployment: MinerDeploymentItem) {
@@ -266,7 +273,7 @@ class FirmwareDeploymentManager: NSObject {
     }
     
     func clearCompletedDeployments() {
-        _deployments.removeAll { deployment in
+        deployments.removeAll { deployment in
             switch deployment.status {
             case .completed, .cancelled, .failed:
                 return true

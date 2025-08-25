@@ -19,6 +19,7 @@ class MinerClientManager {
 
     private let database: Database
     public let firmwareReleaseViewModel: FirmwareReleasesViewModel
+    public let watchDog: MinerWatchDog
 
     private var timer: Timer? = nil
     
@@ -41,6 +42,7 @@ class MinerClientManager {
     init(database:  Database) {
         self.database = database
         self.firmwareReleaseViewModel = FirmwareReleasesViewModel(database: database)
+        self.watchDog = MinerWatchDog(database: database)
 //        self.timer = Timer.scheduledTimer(
 //            timeInterval: 5,
 //            target: self,
@@ -83,6 +85,21 @@ class MinerClientManager {
     func resumeMinerUpdates() {
         self.isPaused = false
         scheduleRefresh()
+    }
+    
+    @MainActor
+    func pauseWatchDogMonitoring() {
+        watchDog.pauseMonitoring()
+    }
+    
+    @MainActor
+    func resumeWatchDogMonitoring() {
+        watchDog.resumeMonitoring()
+    }
+    
+    @MainActor
+    func isWatchDogMonitoringPaused() -> Bool {
+        return watchDog.isMonitoringPaused()
     }
     
     func refreshClientInfo() {
@@ -128,7 +145,7 @@ class MinerClientManager {
                     }
                     
                     Task.detached {
-                        await Self.refreshClients(clients, database: self.database)
+                        await Self.refreshClients(clients, database: self.database, watchDog: self.watchDog)
                         self.refreshLock.perform(guardedTask: {
                             self.refreshInProgress = false
                         })
@@ -150,7 +167,8 @@ class MinerClientManager {
 
 
 
-    static func refreshClients(_ clients: [AxeOSClient], database: Database) async {
+
+    static func refreshClients(_ clients: [AxeOSClient], database: Database, watchDog: MinerWatchDog) async {
         guard clients.count > 0 else { return }
 
         let clientUpdates = await withTaskGroup(of: ClientUpdate.self) { group in
@@ -210,6 +228,9 @@ class MinerClientManager {
                         }
                         context.insert(updateModel)
                         miner.minerUpdates.append(updateModel)
+                        
+                        // Check for restart condition: 3 consecutive updates with power <= 0.1 and unchanged hashrate
+                        watchDog.checkForRestartCondition(minerIpAddress: miner.ipAddress)
                     case .failure(let error):
                         let updateModel = MinerUpdate(
                             miner: miner,
