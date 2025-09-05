@@ -8,7 +8,7 @@
 import Foundation
 import SwiftUI
 
-enum DownloadStatus {
+enum DownloadStatus: Equatable {
     case pending
     case downloading(progress: Double)
     case completed

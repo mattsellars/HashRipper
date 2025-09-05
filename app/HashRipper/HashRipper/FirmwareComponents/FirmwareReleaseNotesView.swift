@@ -60,16 +60,7 @@ struct FirmwareReleaseNotesView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.orange)
                 } else {
-                    Button(action: {
-                        downloadsManager.downloadAllFirmwareFiles(release: firmwareRelease)
-                    }) {
-                        HStack {
-                            Image(systemName: "arrow.down.circle")
-                            Text("Download Firmware")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
+                    FirmwareDownloadButton(firmwareRelease: firmwareRelease, style: .prominent)
                 }
             }
             

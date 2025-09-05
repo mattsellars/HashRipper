@@ -232,16 +232,8 @@ struct ReleaseInfoView: View {
                 .buttonStyle(.borderless)
                 .help("Delete downloaded files")
             } else {
-                Button {
-                    downloadsManager.downloadAllFirmwareFiles(release: firmwareRelease)
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .resizable()
-                        .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
-                        .foregroundStyle(Color.orange)
-                }
-                .buttonStyle(.borderless)
-                .help("Download firmware update files")
+                FirmwareDownloadButton(firmwareRelease: firmwareRelease, style: .compact)
+                    .frame(width: kReleaseActionButtonsSize, height: kReleaseActionButtonsSize)
             }
         }
     }
