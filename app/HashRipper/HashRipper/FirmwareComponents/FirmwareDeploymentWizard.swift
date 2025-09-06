@@ -203,11 +203,6 @@ struct FirmwareDeploymentWizard: View {
                     .fontWeight(.semibold)
                 
                 Spacer()
-                
-                Button("Cancel") {
-                    dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
             }
             
             Text(model.stageDescription)
@@ -246,6 +241,7 @@ struct FirmwareDeploymentWizard: View {
                 Button("Cancel") { 
                     dismiss() 
                 }
+                .disabled(deploymentManager.activeDeployments.count > 0)
                 
                 Button("Back") {
                     model.previousPage()

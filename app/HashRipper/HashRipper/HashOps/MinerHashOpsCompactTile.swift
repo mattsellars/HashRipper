@@ -79,6 +79,10 @@ struct MinerHashOpsCompactTile: View {
         return isParasitePool(mostRecentUpdate.stratumURL)
     }
     
+    var hasVersionMismatch: Bool {
+        return miner.hasVersionMismatch
+    }
+    
     @MainActor
     private func checkForFirmwareUpdate() async {
         guard let currentVersion = mostRecentUpdate?.minerOSVersion else {
@@ -148,6 +152,7 @@ struct MinerHashOpsCompactTile: View {
                 miner: miner, 
                 isMinerOnParasite: isMinerOnParasite(),
                 hasFirmwareUpdate: hasAvailableFirmwareUpdate,
+                hasVersionMismatch: hasVersionMismatch,
                 onFirmwareUpdateTap: {
                     showFirmwareReleaseNotes = true
                 }
@@ -277,12 +282,26 @@ struct FirmwareUpdateIndicatorView: View {
     }
 }
 
+struct VersionMismatchWarningView: View {
+    var body: some View {
+        Image(systemName: "exclamationmark.triangle.fill")
+            .resizable()
+            .frame(width: 12, height: 12)
+            .foregroundColor(.red)
+            .padding(2)
+            .background(Color.clear)
+            .clipShape(Circle())
+            .help("Version mismatch detected - web interface upload may have failed")
+    }
+}
+
 struct MinerIPHeaderView: View {
     @Environment(\.colorScheme) var colorScheme
 
     var miner: Miner
     let isMinerOnParasite: Bool
     let hasFirmwareUpdate: Bool
+    let hasVersionMismatch: Bool
     let onFirmwareUpdateTap: () -> Void
 
     var body: some View {
@@ -307,6 +326,10 @@ struct MinerIPHeaderView: View {
                 )
             )
             .help(Text("Open in Browser"))
+            if hasVersionMismatch {
+                VersionMismatchWarningView()
+                    .padding(.leading, 1)
+            }
             Spacer()
             HStack {
                 Text(miner.minerDeviceDisplayName)

@@ -30,6 +30,7 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
         case sharesAccepted
         case sharesRejected
         case version
+        case axeOSVersion
         case ASICModel
         case frequency
         case voltage
@@ -62,6 +63,7 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
 
     // OS Version
     public let version: String
+    public let axeOSVersion: String?
 
     // Hardware info
     public let ASICModel: String
@@ -129,6 +131,7 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
 
             // OS Version
             version = try commonContainer.decode(String.self, forKey: CommonCodingKeys.version)
+            axeOSVersion = try? commonContainer.decodeIfPresent(String.self, forKey: CommonCodingKeys.axeOSVersion)
 
             // Hardware info
             ASICModel = try commonContainer.decode(String.self, forKey: CommonCodingKeys.ASICModel)

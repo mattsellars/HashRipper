@@ -12,6 +12,7 @@ import AxeOSClient
 enum DeploymentError: Error {
     case minerUploadFailed(Error)
     case wwwUploadFailed(Error)
+    case wwwVersionMismatch(String)
 }
 
 @MainActor
@@ -119,6 +120,13 @@ class FirmwareDeploymentManager: NSObject {
                         print("Successfully uploaded miner firmware to \(miner.ipAddress)")
                         updateMinerFirmwareStatus(for: item, uploaded: true)
                         self.updateDeploymentStatus(for: item, status: .minerUploadComplete)
+                        try await Task.sleep(nanoseconds: 200_000_000)
+
+                        // Monitor firmware upload if enabled
+                        if configuration.enableRestartMonitoring {
+                            try await monitorMinerRestart(item: item, client: client, phase: .firmware)
+                        }
+                        
                         uploadPhase = .webInterface
                         // Small delay between uploads
                         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 seconds
@@ -127,11 +135,7 @@ class FirmwareDeploymentManager: NSObject {
                     }
                 }
 
-                // Step 2: Monitor for restart if both files uploaded and monitoring enabled
-                // Brief pause to show completion state, then start monitoring
-                await monitorMinerRestart(item: item, client: client, phase: uploadPhase)
-
-                // Step 3: Upload www firmware (if not already uploaded)
+                // Step 2: Upload www firmware (if not already uploaded)
                 if !item.wwwFirmwareUploaded {
                     updateDeploymentStatus(for: item, status: .uploadingWww(progress: 0.0))
                     try await Task.sleep(nanoseconds: 200_000_000)
@@ -143,6 +147,9 @@ class FirmwareDeploymentManager: NSObject {
                     switch wwwUploadResult {
                     case .success:
                         print("Successfully uploaded www firmware to \(miner.ipAddress)")
+                        try await Task.sleep(nanoseconds: 200_000_000)
+                        _ = await client.restartClient()
+
                         updateWwwFirmwareStatus(for: item, uploaded: true)
                         self.updateDeploymentStatus(for: item, status: .wwwUploadComplete)
 
@@ -153,10 +160,9 @@ class FirmwareDeploymentManager: NSObject {
                     }
                 }
                 
-                // Step 3: Monitor for restart if both files uploaded and monitoring enabled
+                // Step 3: Monitor www upload for version verification (if enabled)
                 if configuration.enableRestartMonitoring {
-                    // Brief pause to show completion state, then start monitoring
-                    await monitorMinerRestart(item: item, client: client, phase: uploadPhase)
+                    try await monitorMinerRestart(item: item, client: client, phase: .webInterface)
                 }
                 
                 updateDeploymentStatus(for: item, status: .completed)
@@ -172,6 +178,8 @@ class FirmwareDeploymentManager: NSObject {
                         errorMessage = "Miner firmware upload failed: \(uploadError.localizedDescription)"
                     case DeploymentError.wwwUploadFailed(let uploadError):
                         errorMessage = "Web interface upload failed: \(uploadError.localizedDescription)"
+                    case DeploymentError.wwwVersionMismatch(let details):
+                        errorMessage = "Web interface upload failed (version mismatch): \(details)"
                     default:
                         errorMessage = "Failed after \(maxRetries) retries: \(error.localizedDescription)"
                     }
@@ -179,6 +187,22 @@ class FirmwareDeploymentManager: NSObject {
                     break
                 } else {
                     print("Deployment attempt \(retryAttempts) failed for \(miner.ipAddress), retrying...")
+                    
+                    // Reset upload status for retry based on error type
+                    switch error {
+                    case DeploymentError.wwwVersionMismatch(_):
+                        // Reset www upload status to retry www upload
+                        updateWwwFirmwareStatus(for: item, uploaded: false)
+                        uploadPhase = .webInterface
+                        print("Resetting www upload status due to version mismatch, will retry www upload")
+                    case DeploymentError.minerUploadFailed(_):
+                        // Reset miner upload status to retry miner upload
+                        updateMinerFirmwareStatus(for: item, uploaded: false)
+                        uploadPhase = .firmware
+                    default:
+                        break
+                    }
+                    
                     // Wait before retry
                     try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 }
@@ -198,7 +222,7 @@ class FirmwareDeploymentManager: NSObject {
         }
     }
     
-    private func monitorMinerRestart(item: MinerDeploymentItem, client: AxeOSClient, phase: MajorUploadPhase) async {
+    private func monitorMinerRestart(item: MinerDeploymentItem, client: AxeOSClient, phase: MajorUploadPhase) async throws {
         let startTime = Date()
         let timeout = configuration.restartTimeout
         
@@ -206,6 +230,8 @@ class FirmwareDeploymentManager: NSObject {
         let initialSeconds = Int(timeout)
 
         var restartObserved = false
+        var lastSystemInfo: AxeOSDeviceInfo? = nil
+        
         while abs(Date().timeIntervalSince(startTime)) < timeout && !restartObserved {
             let remainingSeconds = Int(timeout - Date().timeIntervalSince(startTime))
             updateDeploymentStatus(for: item, status: .monitorRestart(secondsRemaining: remainingSeconds, phase: phase))
@@ -214,15 +240,33 @@ class FirmwareDeploymentManager: NSObject {
             let systemInfoResult = await client.getSystemInfo()
             switch systemInfoResult {
             case .success(let systemInfo):
-                if let temp = systemInfo.temp, temp > 0 {
-                    restartObserved = true
-                    print("✅ Miner at \(item.miner.ipAddress) updated \(phase == .firmware ? "firmware" : "web interface")")
-                    switch phase {
-                    case .firmware:
-//                        updateDeploymentStatus(for: item, status: .uploadingWww(progress: 0))
-                        break
-                    case .webInterface:
-                        updateDeploymentStatus(for: item, status: .completed)
+                lastSystemInfo = systemInfo
+                
+                switch phase {
+                case .firmware:
+                    // For firmware updates, use temp check to confirm device is responsive
+                    if let temp = systemInfo.temp, temp > 0 {
+                        restartObserved = true
+                        print("✅ Miner at \(item.miner.ipAddress) firmware updated successfully")
+                    }
+                case .webInterface:
+                    // For web interface updates, check version matching
+                    if let axeOSVersion = systemInfo.axeOSVersion, !axeOSVersion.isEmpty {
+                        if systemInfo.version == axeOSVersion {
+                            // Versions match - www upload successful
+                            restartObserved = true
+                            print("✅ Miner at \(item.miner.ipAddress) web interface updated successfully - versions match")
+                            updateDeploymentStatus(for: item, status: .completed)
+                        } else {
+                            // Version mismatch detected - continue monitoring until timeout
+                            print("⚠️ Miner at \(item.miner.ipAddress) version mismatch detected: firmware=\(systemInfo.version), web=\(axeOSVersion) - continuing to monitor...")
+                        }
+                    } else {
+                        // No axeOSVersion available - older firmware, wait for timeout to give www upload time to complete
+                        if let temp = systemInfo.temp, temp > 0 {
+                            print("📍 Miner at \(item.miner.ipAddress) responsive (temp=\(temp)) - waiting for timeout since version verification not supported")
+                        }
+                        // Don't mark as completed yet - wait for timeout
                     }
                 }
 
@@ -237,22 +281,49 @@ class FirmwareDeploymentManager: NSObject {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
             }
         }
-
+        
+        // Handle timeout scenarios
         if !restartObserved {
-            // Timeout reached, manually restart the miner
-            print("Timeout reached for \(item.miner.ipAddress), manually restarting...")
-            updateDeploymentStatus(for: item, status: .restartingManually(phase: phase))
-
-            let restartResult = await client.restartClient()
-            switch restartResult {
-            case .success:
-                print("Successfully manually restarted miner at \(item.miner.ipAddress)")
-            case .failure(let error):
-                print("Warning: Failed to manually restart miner at \(item.miner.ipAddress): \(error)")
+            if phase == .webInterface, let lastSystemInfo = lastSystemInfo {
+                // Check final version status after timeout for web interface phase
+                if let axeOSVersion = lastSystemInfo.axeOSVersion, !axeOSVersion.isEmpty {
+                    if lastSystemInfo.version != axeOSVersion {
+                        // Timeout with version mismatch - throw error to trigger retry
+                        print("❌ Miner at \(item.miner.ipAddress) timeout with version mismatch - www upload failed: firmware=\(lastSystemInfo.version), web=\(axeOSVersion)")
+                        throw DeploymentError.wwwVersionMismatch("Version mismatch after timeout: firmware=\(lastSystemInfo.version), web=\(axeOSVersion)")
+                    } else {
+                        // Timeout but versions match - success
+                        print("✅ Miner at \(item.miner.ipAddress) web interface updated successfully after timeout - versions match")
+                        updateDeploymentStatus(for: item, status: .completed)
+                        return
+                    }
+                } else {
+                    // No axeOSVersion available - assume success after timeout
+                    if let temp = lastSystemInfo.temp, temp > 0 {
+                        print("✅ Miner at \(item.miner.ipAddress) web interface update completed after timeout (version verification not supported)")
+                        updateDeploymentStatus(for: item, status: .completed)
+                        return
+                    }
+                }
             }
+            
+            // Only do manual restart for firmware phase or when no system info available
+            if phase == .firmware || lastSystemInfo == nil {
+                // Timeout reached, manually restart the miner
+                print("Timeout reached for \(item.miner.ipAddress), manually restarting...")
+                updateDeploymentStatus(for: item, status: .restartingManually(phase: phase))
 
-            // Wait a bit after manual restart
-            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+                let restartResult = await client.restartClient()
+                switch restartResult {
+                case .success:
+                    print("Successfully manually restarted miner at \(item.miner.ipAddress)")
+                case .failure(let error):
+                    print("Warning: Failed to manually restart miner at \(item.miner.ipAddress): \(error)")
+                }
+
+                // Wait a bit after manual restart
+                try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+            }
         }
     }
     

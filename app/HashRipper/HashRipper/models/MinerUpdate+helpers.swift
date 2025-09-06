@@ -8,6 +8,55 @@
 import AxeOSClient
 
 extension MinerUpdate {
+    
+    /// Detects if there's a version mismatch indicating failed www binary upload
+    /// Returns true if axeOSVersion is available and doesn't match minerOSVersion
+    /// Returns false if axeOSVersion is not available (older firmware) or versions match
+    var hasVersionMismatch: Bool {
+        guard let axeOSVersion = axeOSVersion, !axeOSVersion.isEmpty else {
+            // axeOSVersion not available, can't detect mismatch (pre-2.9.0 firmware)
+            return false
+        }
+        
+        // Compare versions - mismatch indicates failed www binary upload
+        return minerOSVersion != axeOSVersion
+    }
+    
+    /// Returns a user-friendly description of the version status
+    var versionStatusDescription: String {
+        guard let axeOSVersion = axeOSVersion, !axeOSVersion.isEmpty else {
+            return "Version: \(minerOSVersion) (axeOSVersion not supported)"
+        }
+        
+        if hasVersionMismatch {
+            return "⚠️ Version mismatch: firmware=\(minerOSVersion), web=\(axeOSVersion)"
+        } else {
+            return "Version: \(minerOSVersion) (web interface matches)"
+        }
+    }
+
+}
+
+extension Miner {
+    
+    /// Returns the latest version status for this miner
+    var latestVersionStatus: String? {
+        return minerUpdates
+            .filter { !$0.isFailedUpdate }
+            .sorted { $0.timestamp > $1.timestamp }
+            .first?
+            .versionStatusDescription
+    }
+    
+    /// Returns true if the latest update shows a version mismatch
+    var hasVersionMismatch: Bool {
+        return minerUpdates
+            .filter { !$0.isFailedUpdate }
+            .sorted { $0.timestamp > $1.timestamp }
+            .first?
+            .hasVersionMismatch ?? false
+    }
+
 //    func updateFrom(deviceUpdate: AxeOSDeviceInfo) {
 ////        macAddress = deviceUpdate.macAddr
 //        hostname = deviceUpdate.hostname

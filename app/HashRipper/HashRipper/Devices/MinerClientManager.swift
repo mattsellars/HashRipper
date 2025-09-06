@@ -210,6 +210,7 @@ class MinerClientManager {
                             fallbackStratumURL: info.fallbackStratumURL,
                             fallbackStratumPort: info.fallbackStratumPort,
                             minerOSVersion: info.version,
+                            axeOSVersion: info.axeOSVersion,
                             bestDiff: info.bestDiff,
                             bestSessionDiff: info.bestSessionDiff,
                             frequency: info.frequency,
