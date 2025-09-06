@@ -169,9 +169,6 @@ class MinerClientManager {
         })
     }
 
-
-
-
     static func refreshClients(_ clients: [AxeOSClient], database: Database, watchDog: MinerWatchDog) async {
         guard clients.count > 0 else { return }
 
