@@ -15,7 +15,11 @@ let kMaxUpdateHistory = 720 // one hour 5 second update interval 12 times per mi
 @Observable
 class MinerClientManager {
 //    static let MAX_FAILURE_COUNT: Int = 5
-    static let REFRESH_INTERVAL: TimeInterval = 5
+    static let REFRESH_INTERVAL: TimeInterval = 6
+    
+    // Track pending refresh requests to prevent pileup
+    private static var pendingRefreshIPs: Set<IPAddress> = []
+    private static let pendingRefreshLock = UnfairLock()
 
     private let database: Database
     public let firmwareReleaseViewModel: FirmwareReleasesViewModel
@@ -133,7 +137,7 @@ class MinerClientManager {
                     }
 
                     let sessionConfig = URLSessionConfiguration.default
-                    sessionConfig.timeoutIntervalForRequest = 3.0
+                    sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL
                     sessionConfig.timeoutIntervalForResource = 3.0
                     let session = URLSession(configuration: sessionConfig)
 
@@ -171,99 +175,125 @@ class MinerClientManager {
     static func refreshClients(_ clients: [AxeOSClient], database: Database, watchDog: MinerWatchDog) async {
         guard clients.count > 0 else { return }
 
-        let clientUpdates = await withTaskGroup(of: ClientUpdate.self) { group in
-            var results: [ClientUpdate] = []
-            clients.forEach { client in
-                group.addTask {
-                    let update = await client.getSystemInfo()
-                    return ClientUpdate(ipAddress: client.deviceIpAddress, response: update)
-                }
-            }
-
-            for await clientUpdate in group {
-                results.append(clientUpdate)
-            }
-            return results
+        // Filter out clients that already have pending requests
+        let availableClients = clients.filter { client in
+            pendingRefreshLock.perform(guardedTask: {
+                return !pendingRefreshIPs.contains(client.deviceIpAddress)
+            })
+        }
+        
+        guard availableClients.count > 0 else {
+            print("All clients have pending refresh requests, skipping refresh cycle")
+            return
+        }
+        
+        if availableClients.count < clients.count {
+            let skippedCount = clients.count - availableClients.count
+            print("Skipping \(skippedCount) client(s) with pending refresh requests")
         }
 
-        // Use this single refresh date for all updates so they date align nicely on charting
-        // any actual update discrepency here is not a big deal
+        await withTaskGroup(of: Void.self) { group in
+            availableClients.forEach { client in
+                group.addTask {
+                    // Mark this IP as having a pending request
+                    pendingRefreshLock.perform(guardedTask: {
+                        pendingRefreshIPs.insert(client.deviceIpAddress)
+                    })
+                    
+                    defer {
+                        // Remove from pending set when complete
+                        pendingRefreshLock.perform(guardedTask: {
+                            pendingRefreshIPs.remove(client.deviceIpAddress)
+                        })
+                    }
+                    
+                    let update = await client.getSystemInfo()
+                    let clientUpdate = ClientUpdate(ipAddress: client.deviceIpAddress, response: update)
+                    
+                    // Process each update immediately as it comes in
+                    await processClientUpdate(clientUpdate, database: database, watchDog: watchDog)
+                }
+            }
+        }
+    }
+    
+    private static func processClientUpdate(_ minerUpdate: ClientUpdate, database: Database, watchDog: MinerWatchDog) async {
+        // Use individual timestamp for each update to reflect actual response time
         let timestamp = Date().millisecondsSince1970
+        
         await database.withModelContext({ context in
             do {
                 let allMiners: [Miner] = try context.fetch(FetchDescriptor())
                 
-                clientUpdates.forEach { minerUpdate in
-                    guard let miner = allMiners.first(where: { $0.ipAddress == minerUpdate.ipAddress }) else {
-                        print("WANRING: No miner in db for update")
-                        return
+                guard let miner = allMiners.first(where: { $0.ipAddress == minerUpdate.ipAddress }) else {
+                    print("WANRING: No miner in db for update")
+                    return
+                }
+                
+                switch (minerUpdate.response) {
+                case .success(let info):
+                    let updateModel = MinerUpdate(
+                        miner: miner,
+                        hostname: info.hostname,
+                        stratumUser: info.stratumUser,
+                        fallbackStratumUser: info.fallbackStratumUser,
+                        stratumURL: info.stratumURL,
+                        stratumPort: info.stratumPort,
+                        fallbackStratumURL: info.fallbackStratumURL,
+                        fallbackStratumPort: info.fallbackStratumPort,
+                        minerOSVersion: info.version,
+                        axeOSVersion: info.axeOSVersion,
+                        bestDiff: info.bestDiff,
+                        bestSessionDiff: info.bestSessionDiff,
+                        frequency: info.frequency,
+                        voltage: info.voltage,
+                        temp: info.temp,
+                        vrTemp: info.vrTemp,
+                        fanrpm: info.fanrpm,
+                        fanspeed: info.fanspeed,
+                        hashRate: info.hashRate ?? 0,
+                        power: info.power ?? 0,
+                        isUsingFallbackStratum: info.isUsingFallbackStratum,
+                        timestamp: timestamp
+                    )
+                    if (info.hostname != miner.hostName) {
+                        miner.hostName = info.hostname
                     }
-                    switch (minerUpdate.response) {
-                    case .success(let info):
-                        let updateModel = MinerUpdate(
-                            miner: miner,
-                            hostname: info.hostname,
-                            stratumUser: info.stratumUser,
-                            fallbackStratumUser: info.fallbackStratumUser,
-                            stratumURL: info.stratumURL,
-                            stratumPort: info.stratumPort,
-                            fallbackStratumURL: info.fallbackStratumURL,
-                            fallbackStratumPort: info.fallbackStratumPort,
-                            minerOSVersion: info.version,
-                            axeOSVersion: info.axeOSVersion,
-                            bestDiff: info.bestDiff,
-                            bestSessionDiff: info.bestSessionDiff,
-                            frequency: info.frequency,
-                            voltage: info.voltage,
-                            temp: info.temp,
-                            vrTemp: info.vrTemp,
-                            fanrpm: info.fanrpm,
-                            fanspeed: info.fanspeed,
-                            hashRate: info.hashRate ?? 0,
-                            power: info.power ?? 0,
-                            isUsingFallbackStratum: info.isUsingFallbackStratum,
-                            timestamp: timestamp
-                        )
-                        if (info.hostname != miner.hostName) {
-                            miner.hostName = info.hostname
-                        }
-                        context.insert(updateModel)
-                        miner.minerUpdates.append(updateModel)
-                        
-                        // Check for restart condition: 3 consecutive updates with power <= 0.1 and unchanged hashrate
-                        watchDog.checkForRestartCondition(minerIpAddress: miner.ipAddress)
-                    case .failure(let error):
-                        let updateModel = MinerUpdate(
-                            miner: miner,
-                            hostname: miner.hostName,
-                            stratumUser: "",
-                            fallbackStratumUser: "",
-                            stratumURL: "",
-                            stratumPort: 0,
-                            fallbackStratumURL: "",
-                            fallbackStratumPort: 0,
-                            minerOSVersion: "",
-                            hashRate: 0,
-                            power: 0,
-                            isUsingFallbackStratum: false,
-                            timestamp: timestamp,
-                            isFailedUpdate: true
-                        )
-                        context.insert(updateModel)
-                        miner.minerUpdates.append(updateModel)
-                        print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
-                    }
-                    if (miner.minerUpdates.count > kMaxUpdateHistory) {
-                        let first = miner.minerUpdates[0]
-                        context.delete(first)
-                    }
+                    context.insert(updateModel)
+                    miner.minerUpdates.append(updateModel)
+                    
+                    // Check for restart condition: 3 consecutive updates with power <= 0.1 and unchanged hashrate
+                    watchDog.checkForRestartCondition(minerIpAddress: miner.ipAddress)
+                case .failure(let error):
+                    let updateModel = MinerUpdate(
+                        miner: miner,
+                        hostname: miner.hostName,
+                        stratumUser: "",
+                        fallbackStratumUser: "",
+                        stratumURL: "",
+                        stratumPort: 0,
+                        fallbackStratumURL: "",
+                        fallbackStratumPort: 0,
+                        minerOSVersion: "",
+                        hashRate: 0,
+                        power: 0,
+                        isUsingFallbackStratum: false,
+                        timestamp: timestamp,
+                        isFailedUpdate: true
+                    )
+                    context.insert(updateModel)
+                    miner.minerUpdates.append(updateModel)
+                    print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
+                }
+                if (miner.minerUpdates.count > kMaxUpdateHistory) {
+                    let first = miner.minerUpdates[0]
+                    context.delete(first)
                 }
                 try context.save()
             } catch let error {
                 print("Failed to add miner updates to db: \(String(describing: error))")
             }
         })
-
     }
 }
 

@@ -183,7 +183,7 @@ final public class AxeOSDevicesScanner: Sendable {
         var responses: [DiscoveredDevice] = []
 
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 2.0
+        config.timeoutIntervalForRequest = 5
         let session = URLSession(configuration: config)
         // issue scan requests concurrently
         await withTaskGroup(of: ScanEntry.self) { group in
@@ -205,6 +205,47 @@ final public class AxeOSDevicesScanner: Sendable {
         }
 
         return responses
+    }
+    
+    /// Executes a swarm scan that calls a callback function immediately when each device is found,
+    /// allowing for streaming results instead of waiting for all scans to complete.
+    /// - Parameters:
+    ///   - knownMinerIps: Array of IP addresses to skip during scanning
+    ///   - onDeviceFound: Callback called immediately when a device is discovered
+    /// - Throws: AxeOSScanError if local IP address cannot be determined
+    public func executeSwarmScanV2(
+        knownMinerIps: [String] = [],
+        onDeviceFound: @Sendable @escaping (DiscoveredDevice) -> Void
+    ) async throws {
+        let myIpAddresses = getMyIPAddress()
+        guard myIpAddresses.isEmpty == false else {
+            throw AxeOSScanError.localIPAddressNotFound
+        }
+
+        var ipaddressesToCheck: [String] = []
+        for myIpAddress in myIpAddresses {
+            let ipaddresses = generator.calculateIpRange(ip: myIpAddress)?.filter { $0 != myIpAddress && !knownMinerIps.contains($0) } ?? []
+            ipaddressesToCheck.append(contentsOf: ipaddresses)
+        }
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 5
+        let session = URLSession(configuration: config)
+        
+        // Issue scan requests concurrently and call callback immediately for each found device
+        await withTaskGroup(of: Void.self) { group in
+            for ipAddress in ipaddressesToCheck {
+                group.addTask { @Sendable in
+                    let client = AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
+                    let response = await client.getSystemInfo()
+                    
+                    if case let .success(deviceInfo) = response {
+                        let discoveredDevice = DiscoveredDevice(client: client, info: deviceInfo)
+                        onDeviceFound(discoveredDevice)
+                    }
+                }
+            }
+        }
     }
 
 }

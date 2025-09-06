@@ -78,6 +78,19 @@ struct MainContentView: View {
         }, detail: {
             VStack(spacing: 0) {
                 HStack {
+                    // Scanning indicator on the left
+                    if sideBarSelection == "hashops" && deviceRefresher?.isScanning == true {
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .controlSize(.small)
+                            Text("Searching for AxeOS devices on the network")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        .transition(.opacity)
+                    }
+                    
                     Spacer()
                     switch (sideBarSelection) {
                     case "hashops":
@@ -95,7 +108,8 @@ struct MainContentView: View {
                         HStack {}
                     }
                 }
-                .padding(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 16))
+                .animation(.easeInOut(duration: 0.3), value: deviceRefresher?.isScanning)
+                .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                 .background(.thickMaterial)
                 .zIndex(2)
                 .border(width: 1, edges: [.bottom], color: Color(NSColor.separatorColor))

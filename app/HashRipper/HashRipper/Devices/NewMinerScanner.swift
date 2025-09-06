@@ -12,7 +12,7 @@ import SwiftUI
 
 typealias IPAddress = String
 
-
+@Observable
 class NewMinerScanner {
     let database: Database
     var rescanInterval: TimeInterval = 300 // 5 min
@@ -27,20 +27,18 @@ class NewMinerScanner {
 
     private let lastUpdateLock = UnfairLock()
     private var lastUpdate: Date?
-    private var isScanning: Bool = false
+    private(set) var isScanning: Bool = false
 
     init(database: Database) {
         self.database = database
     }
 
     func initializeDeviceScanner() {
-        rescanTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: { [weak self] _ in
-            guard let self = self else { return }
+        rescanTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: { [self] _ in
             lastUpdateLock.perform(guardedTask: {
                 guard !self.isScanning && self.lastUpdate == nil || Date().timeIntervalSince(self.lastUpdate!) >= self.rescanInterval else { return }
-                self.isScanning = true
                 Task {
-                    await self.rescanDevices()
+                    await self.rescanDevicesStreaming()
                 }
                 self.lastUpdate = Date()
             })
@@ -74,7 +72,7 @@ class NewMinerScanner {
                     return try modelContext.fetch(FetchDescriptor())
                 })
                 let devices = try await AxeOSDevicesScanner.shared.executeSwarmScan(
-
+                    knownMinerIps: knownMiners.map((\.ipAddress))
                 )
 
                 guard devices.count > 0 else {
@@ -122,8 +120,6 @@ class NewMinerScanner {
                         modelContext.insert(miner)
                         modelContext.insert(minerUpdate)
                         miner.minerUpdates.append(minerUpdate)
-
-
                     }
 
                     do {
@@ -132,17 +128,119 @@ class NewMinerScanner {
                         print("Failed to insert miner data: \(String(describing: error))")
                     }
                 })
-                Task.detached { @MainActor in
+                await MainActor.run {
                     self.isScanning = false
-                    lastUpdateLock.perform(guardedTask: {
-                        self.lastUpdate = Date()
-                    })
                 }
+                lastUpdateLock.perform(guardedTask: {
+                    self.lastUpdate = Date()
+                })
             } catch (let error) {
-                Task.detached { @MainActor in
+                await MainActor.run {
                     self.isScanning = false
                 }
                 print("Failed to refresh devices: \(String(describing: error))")
+                return
+            }
+        }
+    }
+    
+    /// Scans for new devices using streaming results - devices are processed immediately as they're found
+    /// instead of waiting for all scans to complete
+    func rescanDevicesStreaming() async {
+        let database = self.database
+        let lastUpdateLock = self.lastUpdateLock
+        
+        Task.detached {
+            let isAlreadyScanning = Task { @MainActor in
+                return self.isScanning
+            }
+            guard !(await isAlreadyScanning.value) else {
+                print("Scan already in progress")
+                return
+            }
+
+            Task { @MainActor in
+                self.isScanning = true
+            }
+            print("Streaming swarm scanning initiated")
+            do {
+                let knownMiners: [Miner] = try await database.withModelContext({ modelContext in
+                    return try modelContext.fetch(FetchDescriptor())
+                })
+                
+                var foundDeviceCount = 0
+                
+                try await AxeOSDevicesScanner.shared.executeSwarmScanV2(
+                    knownMinerIps: knownMiners.map((\.ipAddress))
+                ) { device in
+                    foundDeviceCount += 1
+                    print("Found device \(foundDeviceCount): \(device.info.hostname) at \(device.client.deviceIpAddress)")
+                    
+                    // Process each device immediately as it's found
+                    Task {
+                        await database.withModelContext({ modelContext in
+                            let ipAddress = device.client.deviceIpAddress
+                            let info = device.info
+                            let miner = Miner(
+                                hostName: device.info.hostname,
+                                ipAddress: ipAddress,
+                                ASICModel: info.ASICModel,
+                                boardVersion: info.boardVersion,
+                                deviceModel: info.deviceModel,
+                                macAddress: info.macAddr,
+                                minerUpdates: []
+                            )
+                            let minerUpdate = MinerUpdate(
+                                miner: miner,
+                                hostname: info.hostname,
+                                stratumUser: info.stratumUser,
+                                fallbackStratumUser: info.fallbackStratumUser,
+                                stratumURL: info.stratumURL,
+                                stratumPort: info.stratumPort,
+                                fallbackStratumURL: info.fallbackStratumURL,
+                                fallbackStratumPort: info.fallbackStratumPort,
+                                minerOSVersion: info.version,
+                                axeOSVersion: info.axeOSVersion,
+                                bestDiff: info.bestDiff,
+                                bestSessionDiff: info.bestSessionDiff,
+                                frequency: info.frequency,
+                                voltage: info.voltage,
+                                temp: info.temp,
+                                vrTemp: info.vrTemp,
+                                fanrpm: info.fanrpm,
+                                fanspeed: info.fanspeed,
+                                hashRate: info.hashRate ?? 0,
+                                power: info.power ?? 0,
+                                isUsingFallbackStratum: info.isUsingFallbackStratum
+                            )
+
+                            modelContext.insert(miner)
+                            modelContext.insert(minerUpdate)
+                            miner.minerUpdates.append(minerUpdate)
+                            
+                            do {
+                                try modelContext.save()
+                                print("Successfully saved new miner: \(miner.hostName)")
+                            } catch(let error) {
+                                print("Failed to insert miner data for \(miner.hostName): \(String(describing: error))")
+                            }
+                        })
+                    }
+                }
+                
+                print("Streaming swarm scan completed - found \(foundDeviceCount) new devices")
+                
+                await MainActor.run {
+                    self.isScanning = false
+                }
+                lastUpdateLock.perform(guardedTask: {
+                    self.lastUpdate = Date()
+                })
+            } catch (let error) {
+                await MainActor.run {
+                    self.isScanning = false
+                }
+                print("Failed to refresh devices with streaming scan: \(String(describing: error))")
                 return
             }
         }

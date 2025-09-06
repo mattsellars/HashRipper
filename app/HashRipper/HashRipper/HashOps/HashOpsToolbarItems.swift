@@ -46,6 +46,7 @@ struct HashOpsToolbarItems: View {
                 Image(systemName: "badge.plus.radiowaves.right")
             }
             .help("Scan for new miners")
+            .disabled(deviceRefresher?.isScanning ?? false)
             
             
             Button(action: rolloutProfile) {
@@ -79,7 +80,7 @@ struct HashOpsToolbarItems: View {
 
     private func scanForNewMiners() {
         Task {
-            await self.deviceRefresher?.rescanDevices()
+            await self.deviceRefresher?.rescanDevicesStreaming()
         }
     }
 }
