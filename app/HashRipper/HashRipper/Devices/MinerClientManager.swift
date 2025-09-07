@@ -114,8 +114,8 @@ actor MinerRefreshScheduler {
 class MinerClientManager {
 //    static let MAX_FAILURE_COUNT: Int = 5
     static let REFRESH_INTERVAL: TimeInterval = 4
-    static let BACKGROUND_REFRESH_INTERVAL: TimeInterval = 30 // 30 seconds when backgrounded
-    
+    static let BACKGROUND_REFRESH_INTERVAL: TimeInterval = 10
+
     // Track pending refresh requests to prevent pileup
     static var pendingRefreshIPs: Set<IPAddress> = []
     static let pendingRefreshLock = UnfairLock()
@@ -148,15 +148,15 @@ class MinerClientManager {
         self.watchDog = MinerWatchDog(database: database)
         
         Task { @MainActor in
-            await setupMinerSchedulers()
+            setupMinerSchedulers()
             setupAppLifecycleMonitoring()
         }
     }
 
     @MainActor
-    private func setupMinerSchedulers() async {
+    private func setupMinerSchedulers() {
         // Initialize schedulers for existing miners
-        await refreshClientInfo()
+        refreshClientInfo()
     }
     
     @MainActor
@@ -165,20 +165,20 @@ class MinerClientManager {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            print("App backgrounded - switching to background refresh mode (30s intervals)")
-            self?.setBackgroundMode(true)
+            queue: nil
+        ) { [self] _ in
+            print("App backgrounded - switching to background refresh mode (\(MinerClientManager.BACKGROUND_REFRESH_INTERVAL)s intervals)")
+            self.setBackgroundMode(true)
         }
         
         // Monitor when app becomes active (foregrounds)
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            print("App foregrounded - switching to foreground refresh mode (4s intervals)")
-            self?.setBackgroundMode(false)
+            queue: nil
+        ) { [self] _ in
+            print("App foregrounded - switching to foreground refresh mode (\(MinerClientManager.REFRESH_INTERVAL)s intervals)")
+            self.setBackgroundMode(false)
         }
     }
 
@@ -216,8 +216,7 @@ class MinerClientManager {
             }
         })
     }
-    
-    @MainActor
+
     func setBackgroundMode(_ isBackground: Bool) {
         schedulerLock.perform(guardedTask: {
             let schedulers = Array(minerSchedulers.values)
