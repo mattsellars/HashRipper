@@ -163,7 +163,6 @@ struct MinerHashOpsCompactTile: View {
             }
         }
         .padding(12)
-//        .background(Color(nsColor: .controlBackgroundColor))
         .overlay(alignment: .topLeading) {
             MinerIPHeaderView(
                 miner: miner, 
@@ -174,47 +173,6 @@ struct MinerHashOpsCompactTile: View {
                     showFirmwareReleaseNotes = true
                 }
             )
-//            HStack {
-//                HStack {
-//                    Link(miner.ipAddress, destination: URL(string: "http://\(miner.ipAddress)/")!)
-//                        .font(.subheadline)
-//                        .underline()
-//                        .bold()
-//                        .padding(.vertical, 2)
-//                        .padding(.horizontal, 6)
-//                        .foregroundStyle(.black.opacity(0.9))
-//                        .background(colorScheme == .light ? Color.black.opacity(0.4) : Color.gray)
-//                        .pointerStyle(.link)
-//
-////                        ParasitePoolIndicatorView()
-////                            .hidden(!isMinerOnParasite())
-//
-//                }
-//                .clipShape(
-//                    .rect(
-//                        topLeadingRadius: 0,		
-//                        bottomLeadingRadius: 0,
-//                        bottomTrailingRadius: 4,
-//                        topTrailingRadius: 0
-//                    )
-//                )
-//                .help(Text("Open in Browser"))
-//                Spacer()
-//                Text(miner.minerDeviceDisplayName)
-//                    .font(.subheadline)
-//                    .padding(.vertical, 2)
-//                    .padding(.horizontal, 6)
-//                    .foregroundStyle(Color.white)
-//                    .background(Color.orange)
-//                    .clipShape(
-//                        .rect(
-//                            topLeadingRadius: 0,
-//                            bottomLeadingRadius: 4,
-//                            bottomTrailingRadius: 0,
-//                            topTrailingRadius: 0
-//                        )
-//                    )
-//            }
         }
 
         .overlay(
@@ -249,19 +207,29 @@ struct MinerHashOpsCompactTile: View {
     }
 }
 
-
 struct HashRateView: View {
     let rateInfo: (rateString: String, rateSuffix: String, rateValue: Double)
+    
+    @State private var displayedRateInfo: (rateString: String, rateSuffix: String, rateValue: Double) = ("0", "GH/s", 0.0)
 
     var body: some View {
         HStack (alignment: .lastTextBaseline, spacing: 1){
-            Text(rateInfo.rateString)
+            Text(displayedRateInfo.rateString)
                 .font(.system(size: 42, weight: .light))
+                .contentTransition(.numericText(value: displayedRateInfo.rateValue))
 //                .fontDesign(.monospaced)
-            Text(rateInfo.rateSuffix)
+            Text(displayedRateInfo.rateSuffix)
                 .font(.callout)
                 .fontWeight(.heavy)
 //                .fontDesign(.monospaced)
+        }
+        .onAppear {
+            displayedRateInfo = rateInfo
+        }
+        .onChange(of: rateInfo.rateValue) { _, _ in
+            withAnimation {
+                displayedRateInfo = rateInfo
+            }
         }
     }
 }

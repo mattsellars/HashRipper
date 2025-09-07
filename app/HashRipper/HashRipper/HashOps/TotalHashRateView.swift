@@ -103,10 +103,14 @@ struct TotalHashRateView: View {
         
         debounceTask = Task { @MainActor in
             // Wait 500ms to batch multiple rapid updates
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            
+            try? await Task.sleep(nanoseconds: 300_000_000)
+
             if !Task.isCancelled {
-                stats = calculateStats()
+                DispatchQueue.main.async {
+                    withAnimation {
+                        stats = calculateStats()
+                    }
+                }
             }
         }
     }

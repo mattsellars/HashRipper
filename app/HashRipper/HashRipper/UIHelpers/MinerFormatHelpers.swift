@@ -34,7 +34,8 @@ func formatMinerHashRate(rawRateValue: Double) -> (rateString: String, rateSuffi
     formatter.maximumFractionDigits = decimals
     formatter.minimumFractionDigits = decimals
     let stringValue = formatter.string(from: NSNumber(value: scaledValue))!
-    return (stringValue, suffix, formatter.number(from: stringValue)!.doubleValue)
+    return (stringValue, suffix, scaledValue)
+//    return (stringValue, suffix, formatter.number(from: stringValue)!.doubleValue)
 //    return "\(String(format: "%.\(decimals)f", scaledValue)) \(suffix)"
 }
 
