@@ -20,6 +20,13 @@ struct HashRipperApp: App {
             clientManager: minerClientManager,
             downloadsManager: firmwareDownloadsManager
         )
+        
+        // Connect NewMinerScanner to MinerClientManager
+        newMinerScanner.onNewMinersDiscovered = { [weak minerClientManager] ipAddresses in
+            Task { @MainActor in
+                minerClientManager?.handleNewlyDiscoveredMiners(ipAddresses)
+            }
+        }
     }
 
     var body: some Scene {

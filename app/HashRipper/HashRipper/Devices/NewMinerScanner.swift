@@ -16,6 +16,9 @@ typealias IPAddress = String
 class NewMinerScanner {
     let database: Database
     var rescanInterval: TimeInterval = 300 // 5 min
+    
+    // Callback for when new miners are discovered
+    var onNewMinersDiscovered: (([IPAddress]) -> Void)?
 
     let connectedDeviceUrlSession: URLSession = {
         let config = URLSessionConfiguration.default
@@ -169,12 +172,17 @@ class NewMinerScanner {
                 })
                 
                 var foundDeviceCount = 0
+                var newMinerIpAddresses: [IPAddress] = []
                 
                 try await AxeOSDevicesScanner.shared.executeSwarmScanV2(
                     knownMinerIps: knownMiners.map((\.ipAddress))
                 ) { device in
                     foundDeviceCount += 1
-                    print("Found device \(foundDeviceCount): \(device.info.hostname) at \(device.client.deviceIpAddress)")
+                    let ipAddress = device.client.deviceIpAddress
+                    print("Found device \(foundDeviceCount): \(device.info.hostname) at \(ipAddress)")
+                    
+                    // Track this new IP address
+                    newMinerIpAddresses.append(ipAddress)
                     
                     // Process each device immediately as it's found
                     Task {
@@ -229,6 +237,13 @@ class NewMinerScanner {
                 }
                 
                 print("Streaming swarm scan completed - found \(foundDeviceCount) new devices")
+                
+                // Notify about newly discovered miners
+                if !newMinerIpAddresses.isEmpty {
+                    await MainActor.run {
+                        self.onNewMinersDiscovered?(newMinerIpAddresses)
+                    }
+                }
                 
                 await MainActor.run {
                     self.isScanning = false

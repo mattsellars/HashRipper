@@ -21,6 +21,7 @@ public final class UnfairLock {
         lock.deallocate()
     }
 
+    @discardableResult
     public func perform<R>(guardedTask: () throws -> R) rethrows -> R {
         os_unfair_lock_lock(lock)
         defer { os_unfair_lock_unlock(lock) }

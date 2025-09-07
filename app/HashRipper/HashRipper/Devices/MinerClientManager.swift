@@ -9,23 +9,120 @@ import AxeOSClient
 import Foundation
 import SwiftData
 import SwiftUI
+import Cocoa
 
 let kMaxUpdateHistory = 720 // one hour 5 second update interval 12 times per minue
+
+/// Individual miner refresh scheduler that handles one miner's refresh cycle
+actor MinerRefreshScheduler {
+    private let ipAddress: IPAddress
+    private let database: Database
+    private let watchDog: MinerWatchDog
+    private let clientManager: MinerClientManager
+    private var refreshTask: Task<Void, Never>?
+    private var isPaused: Bool = false
+    private var isBackgroundMode: Bool = false
+    
+    init(ipAddress: IPAddress, database: Database, watchDog: MinerWatchDog, clientManager: MinerClientManager) {
+        self.ipAddress = ipAddress
+        self.database = database
+        self.watchDog = watchDog
+        self.clientManager = clientManager
+    }
+    
+    func startRefreshing() {
+        guard refreshTask == nil else { return }
+        
+        refreshTask = Task { [weak self] in
+            await self?.refreshLoop()
+        }
+    }
+    
+    func pause() {
+        isPaused = true
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+    
+    func resume() {
+        guard isPaused else { return }
+        isPaused = false
+        startRefreshing()
+    }
+    
+    func setBackgroundMode(_ isBackground: Bool) {
+        let wasBackgroundMode = isBackgroundMode
+        isBackgroundMode = isBackground
+        
+        // If mode changed and we're actively refreshing, restart with new interval
+        if wasBackgroundMode != isBackground && refreshTask != nil && !isPaused {
+            refreshTask?.cancel()
+            refreshTask = nil
+            startRefreshing()
+        }
+    }
+    
+    func stop() {
+        isPaused = true
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+    
+    private func refreshLoop() async {
+        while !isPaused && !Task.isCancelled {
+            // Get client for this miner
+            guard let client = await clientManager.client(forIpAddress: ipAddress) else {
+                // If no client, wait and try again
+                try? await Task.sleep(nanoseconds: UInt64(MinerClientManager.REFRESH_INTERVAL * 1_000_000_000))
+                continue
+            }
+            
+            // Skip if there's already a pending request for this IP
+            let shouldSkip = MinerClientManager.pendingRefreshLock.perform(guardedTask: {
+                return MinerClientManager.pendingRefreshIPs.contains(ipAddress)
+            })
+            
+            if !shouldSkip {
+                // Mark as pending
+                MinerClientManager.pendingRefreshLock.perform(guardedTask: {
+                    MinerClientManager.pendingRefreshIPs.insert(ipAddress)
+                })
+                
+                // Perform the refresh
+                let update = await client.getSystemInfo()
+                let clientUpdate = ClientUpdate(ipAddress: ipAddress, response: update)
+                await MinerClientManager.processClientUpdate(clientUpdate, database: database, watchDog: watchDog)
+                
+                // Remove from pending
+                MinerClientManager.pendingRefreshLock.perform(guardedTask: {
+                    MinerClientManager.pendingRefreshIPs.remove(ipAddress)
+                })
+            }
+            
+            // Wait for next refresh interval (longer when backgrounded to save CPU)
+            let interval = isBackgroundMode ? MinerClientManager.BACKGROUND_REFRESH_INTERVAL : MinerClientManager.REFRESH_INTERVAL
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+        }
+    }
+}
 
 @Observable
 class MinerClientManager {
 //    static let MAX_FAILURE_COUNT: Int = 5
-    static let REFRESH_INTERVAL: TimeInterval = 6
+    static let REFRESH_INTERVAL: TimeInterval = 4
+    static let BACKGROUND_REFRESH_INTERVAL: TimeInterval = 30 // 30 seconds when backgrounded
     
     // Track pending refresh requests to prevent pileup
-    private static var pendingRefreshIPs: Set<IPAddress> = []
-    private static let pendingRefreshLock = UnfairLock()
+    static var pendingRefreshIPs: Set<IPAddress> = []
+    static let pendingRefreshLock = UnfairLock()
 
     private let database: Database
     public let firmwareReleaseViewModel: FirmwareReleasesViewModel
     public let watchDog: MinerWatchDog
 
-    private var timer: Timer? = nil
+    // Per-miner refresh schedulers
+    private var minerSchedulers: [IPAddress: MinerRefreshScheduler] = [:]
+    private let schedulerLock = UnfairLock()
     
 //    private let modelContainer:  ModelContainer
     private let updateFailureCount: Int = 0
@@ -38,8 +135,6 @@ class MinerClientManager {
         return Array(minerClients.values)
     }
 
-    var refreshInProgress: Bool = false
-    var refreshLock = UnfairLock()
 
     var isPaused: Bool = false
 
@@ -47,48 +142,87 @@ class MinerClientManager {
         self.database = database
         self.firmwareReleaseViewModel = FirmwareReleasesViewModel(database: database)
         self.watchDog = MinerWatchDog(database: database)
-//        self.timer = Timer.scheduledTimer(
-//            timeInterval: 5,
-//            target: self,
-//            selector: #selector(refreshClientInfo),
-//            userInfo: nil,
-//            repeats: true
-//        )
-//
+        
         Task { @MainActor in
-            refreshClientInfo()
-            scheduleRefresh()
+            await setupMinerSchedulers()
+            setupAppLifecycleMonitoring()
         }
     }
 
     @MainActor
-    func scheduleRefresh() {
-        self.timer = Timer.scheduledTimer(withTimeInterval: Self.REFRESH_INTERVAL, repeats: true, block: { [weak self] timer in
-            guard let strongSelf = self else {
-                timer.invalidate()
-                return
-            }
-
-            strongSelf.refreshClientInfo()
-        })
+    private func setupMinerSchedulers() async {
+        // Initialize schedulers for existing miners
+        await refreshClientInfo()
+    }
+    
+    @MainActor
+    private func setupAppLifecycleMonitoring() {
+        // Monitor when app becomes inactive (backgrounds)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("App backgrounded - switching to background refresh mode (30s intervals)")
+            self?.setBackgroundMode(true)
+        }
+        
+        // Monitor when app becomes active (foregrounds)
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            print("App foregrounded - switching to foreground refresh mode (4s intervals)")
+            self?.setBackgroundMode(false)
+        }
     }
 
     @MainActor
     func client(forIpAddress ipAddress: IPAddress) -> AxeOSClient? {
-        return minerClients[ipAddress]
+        return schedulerLock.perform {
+            return minerClients[ipAddress]
+        }
     }
 
     @MainActor
     func pauseMinerUpdates() {
-        self.timer?.invalidate()
-        self.timer = nil
         self.isPaused = true
+        
+        schedulerLock.perform(guardedTask: {
+            let schedulers = Array(minerSchedulers.values)
+            Task {
+                for scheduler in schedulers {
+                    await scheduler.pause()
+                }
+            }
+        })
     }
 
     @MainActor
     func resumeMinerUpdates() {
         self.isPaused = false
-        scheduleRefresh()
+        
+        schedulerLock.perform(guardedTask: {
+            let schedulers = Array(minerSchedulers.values)
+            Task {
+                for scheduler in schedulers {
+                    await scheduler.resume()
+                }
+            }
+        })
+    }
+    
+    @MainActor
+    func setBackgroundMode(_ isBackground: Bool) {
+        schedulerLock.perform(guardedTask: {
+            let schedulers = Array(minerSchedulers.values)
+            Task {
+                for scheduler in schedulers {
+                    await scheduler.setBackgroundMode(isBackground)
+                }
+            }
+        })
     }
     
     @MainActor
@@ -107,123 +241,167 @@ class MinerClientManager {
     }
     
     func refreshClientInfo() {
-        refreshLock.perform(guardedTask: {
-            guard !self.refreshInProgress else {
+        Task {
+            // First, do synchronous database operations
+            let (newMinerIps, allMinerIps) = await database.withModelContext { context in
+                // get all Miners
+                let miners = try? context.fetch(FetchDescriptor<Miner>())
+                guard let miners = miners, !miners.isEmpty else {
+                    print("No miners found to refresh")
+                    return ([], []) as ([IPAddress], [IPAddress])
+                }
+
+                var newIps: [IPAddress] = []
+                var allIps: [IPAddress] = []
+                miners.forEach { miner in
+                    allIps.append(miner.ipAddress)
+                    let exisitingMiner = self.schedulerLock.perform {
+                        self.minerClients[miner.ipAddress]
+                    }
+                    if exisitingMiner == nil {
+                        newIps.append(miner.ipAddress)
+                    }
+                }
+                return (newIps, allIps)
+            }
+
+            // Create clients for new miners (if any)
+            var newClients: [AxeOSClient] = []
+            if !newMinerIps.isEmpty {
+                let sessionConfig = URLSessionConfiguration.default
+                sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL
+                sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
+                let session = URLSession(configuration: sessionConfig)
+
+                for ipAddress in newMinerIps {
+                    let client = AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
+                    newClients.append(client)
+                }
+            }
+            
+            // Exit early if no miners found at all
+            guard !allMinerIps.isEmpty else {
                 return
             }
             
-            self.refreshInProgress = true
-            
-            Task {
-                let newMinerClients: [AxeOSClient] = await database.withModelContext { context in
-                    // get all Miners
-                    let miners = try? context.fetch(FetchDescriptor<Miner>())
-                    guard let miners = miners, !miners.isEmpty else {
-                        print("No miners found to refresh")
-                        self.refreshLock.perform(guardedTask: {
-                            self.refreshInProgress = false
-                        })
-                        return []
-                    }
-
-                    var newMinerIps: [IPAddress] = []
-                    var clients: [AxeOSClient] = []
-                    miners.forEach { miner in
-                        if let existingClient = self.minerClients[miner.ipAddress] {
-                            clients.append(existingClient)
-                        } else {
-                            newMinerIps.append(miner.ipAddress)
-                        }
-                    }
-
-                    let sessionConfig = URLSessionConfiguration.default
-                    sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL
-                    sessionConfig.timeoutIntervalForResource = 3.0
-                    let session = URLSession(configuration: sessionConfig)
-
-                    var newClients: [AxeOSClient] = []
-                    for ipAddress in newMinerIps {
-                        let client = AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
-                        clients.append(client)
-                        newClients.append(client)
-                    }
-                    
-                    Task.detached {
-                        await Self.refreshClients(clients, database: self.database, watchDog: self.watchDog)
-                        self.refreshLock.perform(guardedTask: {
-                            self.refreshInProgress = false
-                        })
-                    }
-                    
-                    return newClients
+            // Now do MainActor operations
+            await MainActor.run {
+                if newClients.count > 0 {
+                    self.firmwareReleaseViewModel.updateReleasesSources()
                 }
-                Task.detached { @MainActor in
-                    if newMinerClients.count > 0 {
-                        self.firmwareReleaseViewModel.updateReleasesSources()
-                    }
-                    newMinerClients.forEach { client in
+                
+                // Add new clients
+                newClients.forEach { client in
+                    self.schedulerLock.perform {
                         self.minerClients[client.deviceIpAddress] = client
                     }
                 }
-            }
-        })
-    }
-
-    static func refreshClients(_ clients: [AxeOSClient], database: Database, watchDog: MinerWatchDog) async {
-        guard clients.count > 0 else { return }
-
-        // Filter out clients that already have pending requests
-        let availableClients = clients.filter { client in
-            pendingRefreshLock.perform(guardedTask: {
-                return !pendingRefreshIPs.contains(client.deviceIpAddress)
-            })
-        }
-        
-        guard availableClients.count > 0 else {
-            print("All clients have pending refresh requests, skipping refresh cycle")
-            return
-        }
-        
-        if availableClients.count < clients.count {
-            let skippedCount = clients.count - availableClients.count
-            print("Skipping \(skippedCount) client(s) with pending refresh requests")
-        }
-
-        await withTaskGroup(of: Void.self) { group in
-            availableClients.forEach { client in
-                group.addTask {
-                    // Mark this IP as having a pending request
-                    pendingRefreshLock.perform(guardedTask: {
-                        pendingRefreshIPs.insert(client.deviceIpAddress)
-                    })
-                    
-                    defer {
-                        // Remove from pending set when complete
-                        pendingRefreshLock.perform(guardedTask: {
-                            pendingRefreshIPs.remove(client.deviceIpAddress)
-                        })
-                    }
-                    
-                    let update = await client.getSystemInfo()
-                    let clientUpdate = ClientUpdate(ipAddress: client.deviceIpAddress, response: update)
-                    
-                    // Process each update immediately as it comes in
-                    await processClientUpdate(clientUpdate, database: database, watchDog: watchDog)
+                
+                // Ensure schedulers exist for ALL miners (existing + new)
+                allMinerIps.forEach { ipAddress in
+                    self.createSchedulerForMiner(ipAddress: ipAddress)
                 }
             }
         }
     }
     
-    private static func processClientUpdate(_ minerUpdate: ClientUpdate, database: Database, watchDog: MinerWatchDog) async {
+    /// Sets up clients and schedulers for newly discovered miners
+    @MainActor
+    func handleNewlyDiscoveredMiners(_ ipAddresses: [IPAddress]) {
+        Task {
+            // Create clients for new miners
+            var newClients: [AxeOSClient] = []
+            let sessionConfig = URLSessionConfiguration.default
+            sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL * 2
+            sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
+            let session = URLSession(configuration: sessionConfig)
+
+            for ipAddress in ipAddresses {
+                // Check if we already have a client for this IP
+                let hasExistingClient = schedulerLock.perform {
+                    return minerClients[ipAddress] != nil
+                }
+                
+                if !hasExistingClient {
+                    let client = AxeOSClient(deviceIpAddress: ipAddress, urlSession: session)
+                    newClients.append(client)
+                }
+            }
+            
+            // Add new clients and create schedulers
+            await MainActor.run {
+                if newClients.count > 0 {
+                    print("Setting up \(newClients.count) newly discovered miners")
+                    self.firmwareReleaseViewModel.updateReleasesSources()
+                }
+                
+                // Add new clients
+                newClients.forEach { client in
+                    self.schedulerLock.perform {
+                        self.minerClients[client.deviceIpAddress] = client
+                    }
+                }
+                
+                // Create schedulers for all provided IP addresses (both new and existing)
+                ipAddresses.forEach { ipAddress in
+                    self.createSchedulerForMiner(ipAddress: ipAddress)
+                }
+            }
+        }
+    }
+
+    private func createSchedulerForMiner(ipAddress: IPAddress) {
+        schedulerLock.perform(guardedTask: {
+            guard minerSchedulers[ipAddress] == nil else { return }
+            
+            let scheduler = MinerRefreshScheduler(
+                ipAddress: ipAddress,
+                database: database,
+                watchDog: watchDog,
+                clientManager: self
+            )
+            
+            minerSchedulers[ipAddress] = scheduler
+            
+            if !isPaused {
+                Task {
+                    await scheduler.startRefreshing()
+                }
+            }
+        })
+    }
+    
+    func removeMiner(ipAddress: IPAddress) {
+        schedulerLock.perform(guardedTask: {
+            if let scheduler = minerSchedulers[ipAddress] {
+                Task {
+                    await scheduler.stop()
+                }
+                minerSchedulers.removeValue(forKey: ipAddress)
+            }
+            minerClients.removeValue(forKey: ipAddress)
+        })
+    }
+
+    // This method is now handled by individual MinerRefreshSchedulers
+    // Keeping it for any legacy code that might call it directly
+    static func refreshClients(_ clients: [AxeOSClient], database: Database, watchDog: MinerWatchDog) async {
+        print("Warning: refreshClients called on legacy method - individual schedulers should handle this")
+    }
+    
+    fileprivate static func processClientUpdate(_ minerUpdate: ClientUpdate, database: Database, watchDog: MinerWatchDog) async {
         // Use individual timestamp for each update to reflect actual response time
         let timestamp = Date().millisecondsSince1970
         
-        await database.withModelContext({ context in
+        // Track if we need to check watchdog after database operations
+        var shouldCheckWatchdog = false
+        
+        await database.withModelContext { context in
             do {
                 let allMiners: [Miner] = try context.fetch(FetchDescriptor())
                 
                 guard let miner = allMiners.first(where: { $0.ipAddress == minerUpdate.ipAddress }) else {
-                    print("WANRING: No miner in db for update")
+                    print("WARNING: No miner in db for update")
                     return
                 }
                 
@@ -259,25 +437,59 @@ class MinerClientManager {
                     context.insert(updateModel)
                     miner.minerUpdates.append(updateModel)
                     
-                    // Check for restart condition: 3 consecutive updates with power <= 0.1 and unchanged hashrate
-                    watchDog.checkForRestartCondition(minerIpAddress: miner.ipAddress)
+                    // Mark that we should check watchdog after database operations complete
+                    shouldCheckWatchdog = true
                 case .failure(let error):
-                    let updateModel = MinerUpdate(
-                        miner: miner,
-                        hostname: miner.hostName,
-                        stratumUser: "",
-                        fallbackStratumUser: "",
-                        stratumURL: "",
-                        stratumPort: 0,
-                        fallbackStratumURL: "",
-                        fallbackStratumPort: 0,
-                        minerOSVersion: "",
-                        hashRate: 0,
-                        power: 0,
-                        isUsingFallbackStratum: false,
-                        timestamp: timestamp,
-                        isFailedUpdate: true
-                    )
+                    // Find the most recent successful update to copy its values
+                    let previousUpdate = miner.minerUpdates.last(where: { !$0.isFailedUpdate })
+                    
+                    let updateModel: MinerUpdate
+                    if let previous = previousUpdate {
+                        // Copy previous successful update but mark as failed
+                        updateModel = MinerUpdate(
+                            miner: miner,
+                            hostname: previous.hostname,
+                            stratumUser: previous.stratumUser,
+                            fallbackStratumUser: previous.fallbackStratumUser,
+                            stratumURL: previous.stratumURL,
+                            stratumPort: previous.stratumPort,
+                            fallbackStratumURL: previous.fallbackStratumURL,
+                            fallbackStratumPort: previous.fallbackStratumPort,
+                            minerOSVersion: previous.minerOSVersion,
+                            axeOSVersion: previous.axeOSVersion,
+                            bestDiff: previous.bestDiff,
+                            bestSessionDiff: previous.bestSessionDiff,
+                            frequency: previous.frequency,
+                            voltage: previous.voltage,
+                            temp: previous.temp,
+                            vrTemp: previous.vrTemp,
+                            fanrpm: previous.fanrpm,
+                            fanspeed: previous.fanspeed,
+                            hashRate: previous.hashRate,
+                            power: previous.power,
+                            isUsingFallbackStratum: previous.isUsingFallbackStratum,
+                            timestamp: timestamp,
+                            isFailedUpdate: true
+                        )
+                    } else {
+                        // No previous update available, use empty values
+                        updateModel = MinerUpdate(
+                            miner: miner,
+                            hostname: miner.hostName,
+                            stratumUser: "",
+                            fallbackStratumUser: "",
+                            stratumURL: "",
+                            stratumPort: 0,
+                            fallbackStratumURL: "",
+                            fallbackStratumPort: 0,
+                            minerOSVersion: "",
+                            hashRate: 0,
+                            power: 0,
+                            isUsingFallbackStratum: false,
+                            timestamp: timestamp,
+                            isFailedUpdate: true
+                        )
+                    }
                     context.insert(updateModel)
                     miner.minerUpdates.append(updateModel)
                     print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
@@ -290,7 +502,12 @@ class MinerClientManager {
             } catch let error {
                 print("Failed to add miner updates to db: \(String(describing: error))")
             }
-        })
+        }
+        
+        // Check watchdog after database operations are complete
+        if shouldCheckWatchdog {
+            watchDog.checkForRestartCondition(minerIpAddress: minerUpdate.ipAddress)
+        }
     }
 }
 
