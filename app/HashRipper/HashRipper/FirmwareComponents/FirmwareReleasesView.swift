@@ -20,20 +20,20 @@ struct FirmwareReleasesView: View {
     @Query(sort: \FirmwareRelease.releaseDate, order: .reverse)
     private var allReleases: [FirmwareRelease]
     
+    // Cache stable releases and grouped data to prevent constant recalculation
+    @State private var stableReleases: [FirmwareRelease] = []
+    @State private var cachedReleasesGrouped: [String: [FirmwareRelease]] = [:]
+    
     private var releases: [FirmwareRelease] {
         if viewModel.showPreReleases {
-            return allReleases
+            return stableReleases
         } else {
-            return allReleases.filter { !$0.isPreRelease }
+            return stableReleases.filter { !$0.isPreRelease }
         }
     }
 
     var releasesGroupedByDeviceType: [String: [FirmwareRelease]] {
-        return releases.reduce(into: [:]) { partialResult, release in
-            var releases = partialResult[release.device] ?? []
-            releases.append(release)
-            partialResult[release.device] = releases
-        }
+        return cachedReleasesGrouped
     }
 
     var body: some View {
@@ -43,6 +43,7 @@ struct FirmwareReleasesView: View {
                     List {
                         ForEach(releasesGroupedByDeviceType[deviceModel] ?? []) { release in
                             ReleaseInfoView(firmwareRelease: release)
+                                .id(release.id)  // Use stable identifier
                                 .listRowSeparator(.hidden)
                                 .onTapGesture {
                                     self.selectedRelease = release
@@ -62,6 +63,18 @@ struct FirmwareReleasesView: View {
                 }
             }
         }
+        .onChange(of: allReleases.count) { _, _ in
+            updateStableReleases()
+        }
+        .onChange(of: allReleases.map(\.id)) { _, _ in
+            updateStableReleases()
+        }
+        .onChange(of: viewModel.showPreReleases) { _, _ in
+            updateGroupedReleases()
+        }
+        .onAppear {
+            updateStableReleases()
+        }
         .task {
             viewModel.updateReleasesSources()
         }
@@ -75,6 +88,29 @@ struct FirmwareReleasesView: View {
     
     private func deviceCount(for deviceModel: String) -> Int {
         return releasesGroupedByDeviceType[deviceModel]?.count ?? 0
+    }
+    
+    private func updateStableReleases() {
+        // Only update if firmware releases actually changed
+        let newReleaseIds = Set(allReleases.map(\.id))
+        let currentReleaseIds = Set(stableReleases.map(\.id))
+        
+        if newReleaseIds != currentReleaseIds {
+            stableReleases = allReleases
+            print("Updated firmware releases: \(allReleases.count) releases")
+            updateGroupedReleases()
+        }
+    }
+    
+    private func updateGroupedReleases() {
+        // Recalculate grouped releases when needed
+        let currentReleases = releases
+        cachedReleasesGrouped = currentReleases.reduce(into: [:]) { partialResult, release in
+            var releases = partialResult[release.device] ?? []
+            releases.append(release)
+            partialResult[release.device] = releases
+        }
+        print("Updated grouped releases: \(cachedReleasesGrouped.keys.count) device types")
     }
 
 }

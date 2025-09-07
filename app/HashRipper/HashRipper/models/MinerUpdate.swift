@@ -31,6 +31,7 @@ final class MinerUpdate {
     public var power: Double
     public var isUsingFallbackStratum: Bool
     public var miner: Miner
+    public var macAddress: String
     public var timestamp: Int64
     public var isFailedUpdate: Bool
 
@@ -60,6 +61,7 @@ final class MinerUpdate {
         isFailedUpdate: Bool = false
     ) {
         self.miner = miner
+        self.macAddress = miner.macAddress
         self.hostname = hostname
         self.stratumUser = stratumUser
         self.fallbackStratumUser = fallbackStratumUser

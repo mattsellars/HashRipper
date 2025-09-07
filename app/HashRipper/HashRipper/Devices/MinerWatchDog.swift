@@ -47,9 +47,16 @@ class MinerWatchDog {
                     return (false, nil)
                 }
 
-                let recentUpdates = miner.minerUpdates
-                    .filter { !$0.isFailedUpdate }
-                    .suffix(3)
+                // Get recent successful updates for this miner
+                let macAddress = miner.macAddress
+                var recentUpdatesDescriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == macAddress && !update.isFailedUpdate
+                    },
+                    sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+                )
+                recentUpdatesDescriptor.fetchLimit = 3
+                let recentUpdates = (try? context.fetch(recentUpdatesDescriptor)) ?? []
 
                 guard recentUpdates.count >= 3 else {
                     return (false, nil)

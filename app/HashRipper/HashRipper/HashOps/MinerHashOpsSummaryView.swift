@@ -14,8 +14,22 @@ struct MinerHashOpsSummaryView: View  {
     
     var miner: Miner
 
-//    @Query
-//    var latestsUpdates: [MinerUpdate]
+    @Query
+    var latestUpdates: [MinerUpdate]
+    
+    init(miner: Miner) {
+        self.miner = miner
+        let macAddress = miner.macAddress
+        var descriptor = FetchDescriptor<MinerUpdate>(
+            predicate: #Predicate<MinerUpdate> { update in
+                update.macAddress == macAddress
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1  // Only get the latest update
+        
+        self._latestUpdates = Query(descriptor, animation: .default)
+    }
 
     @State
     var showRestartSuccessDialog: Bool = false
@@ -25,8 +39,7 @@ struct MinerHashOpsSummaryView: View  {
 
 
     var mostRecentUpdate: MinerUpdate? {
-        miner.minerUpdates.last ?? nil
-//        latestsUpdates.first ?? nil
+        latestUpdates.first ?? nil
     }
     var asicTempText: String {
         if let temp = mostRecentUpdate?.temp {

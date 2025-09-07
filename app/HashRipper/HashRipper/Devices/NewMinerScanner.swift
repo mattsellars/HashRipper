@@ -94,8 +94,7 @@ class NewMinerScanner {
                             ASICModel: info.ASICModel,
                             boardVersion: info.boardVersion,
                             deviceModel: info.deviceModel,
-                            macAddress: info.macAddr,
-                            minerUpdates: []
+                            macAddress: info.macAddr
                         )
                         let minerUpdate = MinerUpdate(
                             miner: miner,
@@ -122,7 +121,6 @@ class NewMinerScanner {
 
                         modelContext.insert(miner)
                         modelContext.insert(minerUpdate)
-                        miner.minerUpdates.append(minerUpdate)
                     }
 
                     do {
@@ -195,8 +193,7 @@ class NewMinerScanner {
                                 ASICModel: info.ASICModel,
                                 boardVersion: info.boardVersion,
                                 deviceModel: info.deviceModel,
-                                macAddress: info.macAddr,
-                                minerUpdates: []
+                                macAddress: info.macAddr
                             )
                             let minerUpdate = MinerUpdate(
                                 miner: miner,
@@ -224,7 +221,6 @@ class NewMinerScanner {
 
                             modelContext.insert(miner)
                             modelContext.insert(minerUpdate)
-                            miner.minerUpdates.append(minerUpdate)
                             
                             do {
                                 try modelContext.save()

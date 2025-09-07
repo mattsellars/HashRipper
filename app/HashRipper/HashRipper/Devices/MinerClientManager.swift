@@ -11,6 +11,10 @@ import SwiftData
 import SwiftUI
 import Cocoa
 
+extension Notification.Name {
+    static let minerUpdateInserted = Notification.Name("minerUpdateInserted")
+}
+
 let kMaxUpdateHistory = 720 // one hour 5 second update interval 12 times per minue
 
 /// Individual miner refresh scheduler that handles one miner's refresh cycle
@@ -435,13 +439,23 @@ class MinerClientManager {
                         miner.hostName = info.hostname
                     }
                     context.insert(updateModel)
-                    miner.minerUpdates.append(updateModel)
                     
+                    // Post notification for efficient UI updates
+                    postMinerUpdateNotification(minerMacAddress: miner.macAddress)
+
                     // Mark that we should check watchdog after database operations complete
                     shouldCheckWatchdog = true
                 case .failure(let error):
                     // Find the most recent successful update to copy its values
-                    let previousUpdate = miner.minerUpdates.last(where: { !$0.isFailedUpdate })
+                    let macAddress = miner.macAddress
+                    var previousUpdateDescriptor = FetchDescriptor<MinerUpdate>(
+                        predicate: #Predicate<MinerUpdate> { update in
+                            update.macAddress == macAddress && !update.isFailedUpdate
+                        },
+                        sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+                    )
+                    previousUpdateDescriptor.fetchLimit = 1
+                    let previousUpdate = try? context.fetch(previousUpdateDescriptor).first
                     
                     let updateModel: MinerUpdate
                     if let previous = previousUpdate {
@@ -491,12 +505,30 @@ class MinerClientManager {
                         )
                     }
                     context.insert(updateModel)
-                    miner.minerUpdates.append(updateModel)
+                    postMinerUpdateNotification(minerMacAddress: miner.macAddress)
+
                     print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
                 }
-                if (miner.minerUpdates.count > kMaxUpdateHistory) {
-                    let first = miner.minerUpdates[0]
-                    context.delete(first)
+                // Clean up old updates if we have too many
+                let macAddress = miner.macAddress
+                let updateCountDescriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == macAddress
+                    }
+                )
+                if let updateCount = try? context.fetchCount(updateCountDescriptor), updateCount > kMaxUpdateHistory {
+                    var oldUpdatesDescriptor = FetchDescriptor<MinerUpdate>(
+                        predicate: #Predicate<MinerUpdate> { update in
+                            update.macAddress == macAddress
+                        },
+                        sortBy: [SortDescriptor(\.timestamp, order: .forward)]
+                    )
+                    oldUpdatesDescriptor.fetchLimit = updateCount - kMaxUpdateHistory
+                    if let oldUpdates = try? context.fetch(oldUpdatesDescriptor) {
+                        for oldUpdate in oldUpdates {
+                            context.delete(oldUpdate)
+                        }
+                    }
                 }
                 try context.save()
             } catch let error {
@@ -507,6 +539,18 @@ class MinerClientManager {
         // Check watchdog after database operations are complete
         if shouldCheckWatchdog {
             watchDog.checkForRestartCondition(minerIpAddress: minerUpdate.ipAddress)
+        }
+    }
+
+    static func postMinerUpdateNotification(minerMacAddress: String) {
+        let update = ["macAddress": minerMacAddress]
+        EnsureUISafe {
+            // Post notification for failed updates too
+            NotificationCenter.default.post(
+                name: .minerUpdateInserted,
+                object: nil,
+                userInfo: update
+            )
         }
     }
 }

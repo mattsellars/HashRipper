@@ -6,6 +6,7 @@
 //
 
 import AxeOSClient
+import SwiftData
 
 extension MinerUpdate {
     
@@ -40,20 +41,14 @@ extension MinerUpdate {
 extension Miner {
     
     /// Returns the latest version status for this miner
-    var latestVersionStatus: String? {
-        return minerUpdates
-            .filter { !$0.isFailedUpdate }
-            .sorted { $0.timestamp > $1.timestamp }
-            .first?
+    func latestVersionStatus(from context: ModelContext) -> String? {
+        return getLatestUpdate(from: context)?
             .versionStatusDescription
     }
     
     /// Returns true if the latest update shows a version mismatch
-    var hasVersionMismatch: Bool {
-        return minerUpdates
-            .filter { !$0.isFailedUpdate }
-            .sorted { $0.timestamp > $1.timestamp }
-            .first?
+    func hasVersionMismatch(from context: ModelContext) -> Bool {
+        return getLatestUpdate(from: context)?
             .hasVersionMismatch ?? false
     }
 

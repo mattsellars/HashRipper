@@ -672,6 +672,25 @@ private struct MinerSelectionTile: View {
     let isSelected: Bool
     let onToggle: (Bool) -> Void
     
+    @Query var latestUpdates: [MinerUpdate]
+    
+    init(miner: Miner, isSelected: Bool, onToggle: @escaping (Bool) -> Void) {
+        self.miner = miner
+        self.isSelected = isSelected
+        self.onToggle = onToggle
+        
+        let macAddress = miner.macAddress
+        var descriptor = FetchDescriptor<MinerUpdate>(
+            predicate: #Predicate<MinerUpdate> { update in
+                update.macAddress == macAddress
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1  // Only get the latest update
+        
+        self._latestUpdates = Query(descriptor, animation: .default)
+    }
+    
     var body: some View {
         HStack {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -684,7 +703,7 @@ private struct MinerSelectionTile: View {
                 Text("\(miner.ipAddress) • \(miner.minerDeviceDisplayName)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("Current: \(miner.minerUpdates.last?.minerOSVersion ?? "Unknown")")
+                Text("Current: \(latestUpdates.first?.minerOSVersion ?? "Unknown")")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

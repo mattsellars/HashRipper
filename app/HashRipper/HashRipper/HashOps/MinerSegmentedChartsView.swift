@@ -120,8 +120,9 @@ struct MinerSegmentedUpdateChartsView: View {
     @State private var segmentIndex = 0
 
     @Query(sort: [SortDescriptor(\Miner.hostName)]) var allMiners: [Miner]
+    @Query(sort: [SortDescriptor(\MinerUpdate.timestamp, order: .reverse)]) var allUpdates: [MinerUpdate]
 
-    @State var miner: Miner?          // the parent Miner you’re inspecting
+    @State var miner: Miner?          // the parent Miner you're inspecting
     var onClose: () -> Void
 
     var currentMiner: Miner {
@@ -137,7 +138,13 @@ struct MinerSegmentedUpdateChartsView: View {
     }
 
     var updates: [ChartSegmentedDataEntry]  {
-        currentMiner.minerUpdates.suffix(kDataPointCount).map({ (update: MinerUpdate) in
+        // Get updates for the current miner, sorted by timestamp (most recent first)
+        let minerUpdates = allUpdates.filter { $0.macAddress == currentMiner.macAddress }
+        
+        // Take the most recent kDataPointCount updates and reverse to get chronological order
+        let recentUpdates = Array(minerUpdates.prefix(kDataPointCount).reversed())
+        
+        return recentUpdates.map({ (update: MinerUpdate) in
             return ChartSegmentedDataEntry(
                 time: Date(milliseconds: update.timestamp),
                 values: [

@@ -16,6 +16,23 @@ struct MinerHashOpsCompactTile: View {
     @Environment(\.firmwareReleaseViewModel) var firmwareViewModel: FirmwareReleasesViewModel
 
     var miner: Miner
+    
+    @Query
+    var latestUpdates: [MinerUpdate]
+    
+    init(miner: Miner) {
+        self.miner = miner
+        let macAddress = miner.macAddress
+        var descriptor = FetchDescriptor<MinerUpdate>(
+            predicate: #Predicate<MinerUpdate> { update in
+                update.macAddress == macAddress
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1  // Only get the latest update
+        
+        self._latestUpdates = Query(descriptor, animation: .default)
+    }
 
     @State
     var showRestartSuccessDialog: Bool = false
@@ -33,7 +50,7 @@ struct MinerHashOpsCompactTile: View {
     var availableFirmwareRelease: FirmwareRelease? = nil
 
     var mostRecentUpdate: MinerUpdate? {
-        miner.minerUpdates.last ?? nil
+        latestUpdates.first ?? nil
     }
     var asicTempText: String {
         if let temp = mostRecentUpdate?.temp {
@@ -80,7 +97,7 @@ struct MinerHashOpsCompactTile: View {
     }
     
     var hasVersionMismatch: Bool {
-        return miner.hasVersionMismatch
+        return latestUpdates.first?.hasVersionMismatch ?? false
     }
     
     @MainActor

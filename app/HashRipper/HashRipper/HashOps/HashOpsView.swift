@@ -13,6 +13,7 @@ struct HashOpsView: View {
     @Query(sort: \Miner.hostName) private var allMiners: [Miner]
 
     @State private var selectedMiner: Miner? = nil
+    @State private var stableMiners: [Miner] = []
 
     var body: some View {
         VStack {
@@ -23,8 +24,9 @@ struct HashOpsView: View {
                     ],
                     spacing: 16
                 ) {
-                    ForEach(allMiners) { miner in
+                    ForEach(stableMiners) { miner in
                         MinerHashOpsCompactTile(miner: miner)
+                            .id(miner.macAddress)  // Use stable identifier
                             .listRowSeparator(.hidden)
                         //            MinerHashOpsSummaryView(miner: miner)
                             .contentShape(Rectangle())
@@ -43,6 +45,17 @@ struct HashOpsView: View {
                 
             }
         }
+        .onChange(of: allMiners.count) { _, newCount in
+            // Only update when the number of miners changes (not when updates are added)
+            updateStableMiners()
+        }
+        .onChange(of: allMiners.map(\.id)) { _, _ in
+            // Update when miners are added/removed/changed
+            updateStableMiners()
+        }
+        .onAppear {
+            updateStableMiners()
+        }
         .background(
             Image("circuit")
                 .resizable(/*resizingMode: .tile*/)
@@ -52,6 +65,17 @@ struct HashOpsView: View {
                 .allowsHitTesting(false)
                 .opacity(0.5)
         )
+    }
+    
+    private func updateStableMiners() {
+        // Only update if the miners actually changed
+        let newMinerIds = Set(allMiners.map(\.id))
+        let currentMinerIds = Set(stableMiners.map(\.id))
+        
+        if newMinerIds != currentMinerIds {
+            stableMiners = allMiners
+            print("Updated stable miners list: \(allMiners.count) miners")
+        }
     }
 
 }

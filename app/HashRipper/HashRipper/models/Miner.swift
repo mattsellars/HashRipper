@@ -19,8 +19,6 @@ final class Miner {
     public var deviceModel: String?
     public var macAddress: String
 
-    @Relationship(deleteRule: .cascade, inverse: \MinerUpdate.miner)
-    public var minerUpdates: [MinerUpdate]
 
     public init(
         hostName: String,
@@ -28,14 +26,12 @@ final class Miner {
         ASICModel: String,
         boardVersion: String? = nil,
         deviceModel: String? = nil,
-        macAddress: String,
-        minerUpdates: [MinerUpdate]) {
+        macAddress: String) {
         self.hostName = hostName
         self.ipAddress = ipAddress
         self.ASICModel = ASICModel
         self.boardVersion = boardVersion
         self.deviceModel = deviceModel
         self.macAddress = macAddress
-        self.minerUpdates = minerUpdates
     }
 }
