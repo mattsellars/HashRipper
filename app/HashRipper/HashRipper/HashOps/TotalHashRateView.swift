@@ -13,7 +13,6 @@ struct TotalHashRateView: View {
     
     init(){}
 
-//    @Query(sort: \AggregateStats.created, order: .reverse) private var aggregateStats: [AggregateStats]
     @Query var miners: [Miner]
     
     @State private var stats = AggregateStats(hashRate: 0, power: 0, voltage: 0)
