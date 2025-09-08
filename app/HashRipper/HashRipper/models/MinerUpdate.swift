@@ -71,8 +71,8 @@ final class MinerUpdate {
         self.fallbackStratumPort = fallbackStratumPort
         self.minerFirmwareVersion = minerFirmwareVersion
         self.axeOSVersion = axeOSVersion
-        self.bestDiff = bestDiff
-        self.bestSessionDiff = bestSessionDiff
+        self.bestDiff = bestDiff?.replacingOccurrences(of: " ", with: "")
+        self.bestSessionDiff = bestSessionDiff?.replacingOccurrences(of: " ", with: "")
         self.frequency = frequency
         self.voltage = voltage
         self.temp = temp

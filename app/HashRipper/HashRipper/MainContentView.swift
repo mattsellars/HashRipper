@@ -71,6 +71,7 @@ struct MainContentView: View {
                     TotalHashRateView()
                     TotalMinersView()
                     TotalPowerView()
+                    TopMinersView()
                     Spacer()
                 }
                 .toolbar(.hidden)

@@ -243,7 +243,6 @@ struct MinerSegmentedUpdateChartsView: View {
                 ScrollView {
                     if let currentMiner = currentMiner {
                         MinerHashOpsSummaryView(miner: currentMiner)
-                        //                            .redactedIf(test: { viewModel.isLoading }, withRedactedReason: .invalidated)
                     }
                     LazyVStack(spacing: 32) {
                         ForEach(chartsToShow, id: \.self) { segment in
@@ -302,28 +301,3 @@ struct TitleValueView: View {
         }
     }
 }
-
-//struct RedactedPredicateModifier: ViewModifier {
-//    let test: () -> Bool
-//    let redactedReason: RedactionReasons
-//
-//    func body(content: Content) -> some View {
-////        Group {
-//            if test() {
-//                content
-//                    .redacted(reason: redactedReason)
-//            } else {
-//                content
-//            }
-////        }
-//    }
-//}
-//
-//extension View {
-//    func redactedIf(
-//        test: @escaping () -> Bool,
-//        withRedactedReason redactedReason: RedactionReasons
-//    ) -> some View {
-//        modifier(RedactedPredicateModifier(test: test, redactedReason: redactedReason))
-//    }
-//}
