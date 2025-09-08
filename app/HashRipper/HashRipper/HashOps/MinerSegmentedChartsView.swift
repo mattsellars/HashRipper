@@ -116,131 +116,50 @@ enum ChartSegments: Int, CaseIterable, Hashable  {
 
 struct MinerSegmentedUpdateChartsView: View {
     @Environment(\.minerClientManager) var minerClientManager
-
-    @State private var segmentIndex = 0
-
-    @Query(sort: [SortDescriptor(\Miner.hostName)]) var allMiners: [Miner]
-    @Query(sort: [SortDescriptor(\MinerUpdate.timestamp, order: .reverse)]) var allUpdates: [MinerUpdate]
-
-    @State var miner: Miner?          // the parent Miner you're inspecting
+    @Environment(\.modelContext) private var modelContext
+    
+    @StateObject private var viewModel: MinerChartsViewModel
+    let miner: Miner?
     var onClose: () -> Void
-
-    var currentMiner: Miner {
-        miner ?? allMiners.first!
+    
+    init(miner: Miner?, onClose: @escaping () -> Void) {
+        self.miner = miner
+        self.onClose = onClose
+        self._viewModel = StateObject(wrappedValue: MinerChartsViewModel(modelContext: nil, initialMinerMacAddress: miner?.macAddress))
+    }
+    
+    var currentMiner: Miner? {
+        viewModel.currentMiner ?? miner
     }
 
-    var isNextMinerButtonDisabled: Bool {
-        (allMiners.firstIndex(where: { $0.id == currentMiner.id }) ?? 0) == (allMiners.count - 1)
-    }
-
-    var isPreviousMinerButtonDisabled: Bool {
-        (allMiners.firstIndex(where: { $0.id == currentMiner.id }) ?? 0) == 0
-    }
-
-    var updates: [ChartSegmentedDataEntry]  {
-        // Get updates for the current miner, sorted by timestamp (most recent first)
-        let minerUpdates = allUpdates.filter { $0.macAddress == currentMiner.macAddress }
-        
-        // Take the most recent kDataPointCount updates and reverse to get chronological order
-        let recentUpdates = Array(minerUpdates.prefix(kDataPointCount).reversed())
-        
-        return recentUpdates.map({ (update: MinerUpdate) in
-            return ChartSegmentedDataEntry(
-                time: Date(milliseconds: update.timestamp),
-                values: [
-                    ChartSegmentValues(primary: update.hashRate, secondary: nil),
-                    ChartSegmentValues(primary: update.temp ?? 0, secondary: nil),
-                    ChartSegmentValues(primary: update.vrTemp ?? 0, secondary: nil),
-                    ChartSegmentValues(primary: Double(update.fanrpm ?? 0), secondary: Double(update.fanspeed ?? 0)),
-                    ChartSegmentValues(primary: update.power, secondary: nil),
-                    ChartSegmentValues(primary: (update.voltage ?? 0) / 1000.0, secondary: nil)
-                ])
-        })
-    }
-
-    func mostRecentUpdateTitleValue(segmentIndex: Int) -> String {
-        let value = updates.last?.values[segmentIndex]
-        switch ChartSegments(rawValue: segmentIndex) ?? .hashRate {
-            case .hashRate:
-            let f = formatMinerHashRate(rawRateValue: value?.primary ?? 0)
-            return "\(f.rateString)\(f.rateSuffix)"
-        case .voltage, .power:
-            return String(format: "%.1f", value?.primary ?? 0)
-        case .voltageRegulatorTemperature, .asicTemperature:
-            let mf = MeasurementFormatter()
-            mf.unitOptions = .providedUnit
-            mf.numberFormatter.maximumFractionDigits = 1
-            let temp = Measurement(value: value?.primary ?? 0, unit: UnitTemperature.celsius)
-            return mf.string(from: temp)
-        case .fanRPM:
-            let fanRPM = Int(value?.primary ?? 0)
-            let fanSpeedPct = Int(value?.secondary ?? 0)
-            return "\(fanRPM) · \(fanSpeedPct)%"
-        }
-    }
-
-    var selectedSemgentTitle: some View {
-        VStack(alignment: .leading) {
-            if segmentIndex == ChartSegments.asicTemperature.rawValue {
-                VStack(alignment: .leading) {
+    @ViewBuilder
+    func chartView(for segment: ChartSegments) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Title section
+            VStack(alignment: .leading) {
+                if segment == .asicTemperature {
                     TitleValueView(
                         segment: ChartSegments.asicTemperature,
-                        value: mostRecentUpdateTitleValue(segmentIndex: ChartSegments.asicTemperature.rawValue)
+                        value: viewModel.mostRecentUpdateTitleValue(segmentIndex: ChartSegments.asicTemperature.rawValue)
                     )
                     TitleValueView(
                         segment: ChartSegments.voltageRegulatorTemperature,
-                        value: mostRecentUpdateTitleValue(segmentIndex: ChartSegments.voltageRegulatorTemperature.rawValue)
+                        value: viewModel.mostRecentUpdateTitleValue(segmentIndex: ChartSegments.voltageRegulatorTemperature.rawValue)
+                    )
+                } else {
+                    TitleValueView(
+                        segment: segment,
+                        value: viewModel.mostRecentUpdateTitleValue(segmentIndex: segment.rawValue)
                     )
                 }
-            } else {
-                TitleValueView(
-                    segment: ChartSegments(rawValue: segmentIndex) ?? .hashRate,
-                    value: mostRecentUpdateTitleValue(segmentIndex: segmentIndex)
-
-                )
             }
-        }.padding(EdgeInsets(top: 12, leading: 0, bottom: 8, trailing: 0))
-    }
-
-    var tabs: [ChartSegments] {
-        ChartSegments.allCases.filter({ $0 != ChartSegments.voltageRegulatorTemperature })
-    }
-
-    var body: some View {
-        VStack() {
-                VStack {
-//                    Text("\(currentMiner.hostName) · \(currentMiner.ipAddress) · \(currentMiner.minerDeviceDisplayName)")
-//                        .font(.title)
-                    Spacer().frame(height: 16)
-                    MinerHashOpsSummaryView(miner: currentMiner)
-                    HStack {
-                        Button(action: { onPreviousMiner() }) {
-                            Image(systemName: "chevron.left")
-                        }
-                        .disabled(isPreviousMinerButtonDisabled)
-                        Spacer()
-                        Button(action: { onNextMiner() }) {
-                            Image(systemName: "chevron.right")
-                        }
-                        .disabled(isNextMinerButtonDisabled)
-                    }.frame(width: 100)
-                } //.frame(height: 92)
-            .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 8))
-            Divider()
-            VStack {
-                Picker("", selection: $segmentIndex) {
-                    ForEach(tabs, id: \.self) { segment in
-                        Text(segment.tabName).tag(segment.rawValue)
-                    }
-                }.pickerStyle(.segmented)
-            }.padding(16)
-            selectedSemgentTitle
+            
+            // Chart
             Chart {
-                ForEach(updates.indices, id: \.self) { i in
-                    let entry = updates[i]
+                ForEach(viewModel.chartData.indices, id: \.self) { i in
+                    let entry = viewModel.chartData[i]
 
-                    if segmentIndex == ChartSegments.asicTemperature.rawValue {
-
+                    if segment == .asicTemperature {
                         // ASIC Temp line (orange)
                         LineMark(
                             x: .value("Time", entry.time),
@@ -258,29 +177,82 @@ struct MinerSegmentedUpdateChartsView: View {
                         )
                         .foregroundStyle(ChartSegments.voltageRegulatorTemperature.color)
                         .interpolationMethod(.catmullRom)
-
                     } else {
                         // Default single-line chart
                         LineMark(
                             x: .value("Time", entry.time),
-                            y: .value(ChartSegments(rawValue: segmentIndex)?.title ?? "No title", entry.values[segmentIndex].primary)
+                            y: .value(segment.title, entry.values[segment.rawValue].primary)
                         )
                         .interpolationMethod(.catmullRom)
-                        .foregroundStyle(ChartSegments(rawValue: segmentIndex)?.color ?? .black)
+                        .foregroundStyle(segment.color)
                     }
                 }
             }
-            .chartYAxisLabel { Text(ChartSegments(rawValue: segmentIndex)?.symbol ?? "?").font(.caption) }
+            .chartYAxisLabel { Text(segment.symbol).font(.caption) }
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 10, roundLowerBound: true))  // keeps things readable
+                AxisMarks(values: .automatic(desiredCount: 10, roundLowerBound: true))
             }
             .chartYAxis {
                 AxisMarks(values: .automatic(roundLowerBound: true))
             }
-            .padding(.horizontal)
-            .foregroundStyle(ChartSegments(rawValue: segmentIndex)?.color ?? .black)
-            .animation(.easeInOut, value: segmentIndex)
-            Spacer()
+            .frame(height: 200)
+            .foregroundStyle(segment.color)
+        }
+        .padding(.horizontal)
+    }
+    
+    var chartsToShow: [ChartSegments] {
+        ChartSegments.allCases.filter({ $0 != ChartSegments.voltageRegulatorTemperature })
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header section
+            VStack(spacing: 16) {
+                HStack {
+                    Button(action: {
+                        Task { await viewModel.previousMiner() }
+                    }) {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(viewModel.isPreviousMinerButtonDisabled)
+
+                    Spacer()
+
+                    Button(action: {
+                        Task { await viewModel.nextMiner() }
+                    }) {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(viewModel.isNextMinerButtonDisabled)
+                }.frame(width: 100)
+            }
+            .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 8))
+            
+            Divider()
+            
+            // Content section
+            if viewModel.isLoading {
+                VStack {
+                    ProgressView("Loading chart data...")
+                        .progressViewStyle(CircularProgressViewStyle())
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    if let currentMiner = currentMiner {
+                        MinerHashOpsSummaryView(miner: currentMiner)
+                        //                            .redactedIf(test: { viewModel.isLoading }, withRedactedReason: .invalidated)
+                    }
+                    LazyVStack(spacing: 32) {
+                        ForEach(chartsToShow, id: \.self) { segment in
+                            chartView(for: segment)
+                        }
+                    }
+                    .padding(.vertical, 16)
+                }
+            }
         }
         .overlay(alignment: .topTrailing) {
             GeometryReader { geometry in
@@ -289,25 +261,12 @@ struct MinerSegmentedUpdateChartsView: View {
                 }.position(x: geometry.size.width - 24, y: 18)
             }
         }
-    }
-
-    func onPreviousMiner() {
-        if let currentIndex = allMiners.firstIndex(where: { $0.id == currentMiner.id }),
-            currentIndex > 0 {
-            withAnimation {
-                self.miner = allMiners[currentIndex - 1]
-            }
+        .task {
+            viewModel.setModelContext(modelContext)
+            await viewModel.loadMiners()
         }
     }
 
-    func onNextMiner() {
-        if let currentIndex = allMiners.firstIndex(where: { $0.id == currentMiner.id }),
-            currentIndex < allMiners.count - 1 {
-            withAnimation {
-                self.miner = allMiners[currentIndex + 1]
-            }
-        }
-    }
 }
 
 struct ChartSegmentedDataEntry: Hashable {
@@ -343,3 +302,28 @@ struct TitleValueView: View {
         }
     }
 }
+
+//struct RedactedPredicateModifier: ViewModifier {
+//    let test: () -> Bool
+//    let redactedReason: RedactionReasons
+//
+//    func body(content: Content) -> some View {
+////        Group {
+//            if test() {
+//                content
+//                    .redacted(reason: redactedReason)
+//            } else {
+//                content
+//            }
+////        }
+//    }
+//}
+//
+//extension View {
+//    func redactedIf(
+//        test: @escaping () -> Bool,
+//        withRedactedReason redactedReason: RedactionReasons
+//    ) -> some View {
+//        modifier(RedactedPredicateModifier(test: test, redactedReason: redactedReason))
+//    }
+//}

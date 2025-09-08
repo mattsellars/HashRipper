@@ -703,7 +703,7 @@ private struct MinerSelectionTile: View {
                 Text("\(miner.ipAddress) • \(miner.minerDeviceDisplayName)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("Current: \(latestUpdates.first?.minerOSVersion ?? "Unknown")")
+                Text("Current: \(latestUpdates.first?.minerFirmwareVersion ?? "Unknown")")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

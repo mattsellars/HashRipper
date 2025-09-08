@@ -17,7 +17,7 @@ final class MinerUpdate {
     public var stratumPort: Int
     public var fallbackStratumURL: String
     public var fallbackStratumPort: Int
-    public var minerOSVersion: String
+    public var minerFirmwareVersion: String
     public var axeOSVersion: String?
     public var bestDiff: String?
     public var bestSessionDiff: String?
@@ -44,7 +44,7 @@ final class MinerUpdate {
         stratumPort: Int,
         fallbackStratumURL: String,
         fallbackStratumPort: Int,
-        minerOSVersion: String,
+        minerFirmwareVersion: String,
         axeOSVersion: String? = nil,
         bestDiff: String? = nil,
         bestSessionDiff: String? = nil,
@@ -69,7 +69,7 @@ final class MinerUpdate {
         self.stratumPort = stratumPort
         self.fallbackStratumURL = fallbackStratumURL
         self.fallbackStratumPort = fallbackStratumPort
-        self.minerOSVersion = minerOSVersion
+        self.minerFirmwareVersion = minerFirmwareVersion
         self.axeOSVersion = axeOSVersion
         self.bestDiff = bestDiff
         self.bestSessionDiff = bestSessionDiff

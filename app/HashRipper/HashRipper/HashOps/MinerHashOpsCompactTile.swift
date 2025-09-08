@@ -102,7 +102,7 @@ struct MinerHashOpsCompactTile: View {
     
     @MainActor
     private func checkForFirmwareUpdate() async {
-        guard let currentVersion = mostRecentUpdate?.minerOSVersion else {
+        guard let currentVersion = mostRecentUpdate?.minerFirmwareVersion else {
             hasAvailableFirmwareUpdate = false
             availableFirmwareRelease = nil
             return
@@ -198,7 +198,7 @@ struct MinerHashOpsCompactTile: View {
         .task {
             await checkForFirmwareUpdate()
         }
-        .onChange(of: mostRecentUpdate?.minerOSVersion) { _, _ in
+        .onChange(of: mostRecentUpdate?.minerFirmwareVersion) { _, _ in
             Task {
                 await checkForFirmwareUpdate()
             }

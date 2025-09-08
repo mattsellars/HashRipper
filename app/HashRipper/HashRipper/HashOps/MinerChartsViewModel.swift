@@ -1,0 +1,209 @@
+//
+//  MinerChartsViewModel.swift
+//  HashRipper
+//
+//  Created by Matt Sellars
+//
+
+import Foundation
+import SwiftData
+import SwiftUI
+import Combine
+
+@MainActor
+class MinerChartsViewModel: ObservableObject {
+    @Published var miners: [Miner] = []
+    @Published var chartData: [ChartSegmentedDataEntry] = []
+    @Published var isLoading = false
+    @Published var currentMiner: Miner?
+    
+    private var modelContext: ModelContext?
+    private let initialMinerMacAddress: String?
+    private var notificationSubscription: AnyCancellable?
+    private var debounceTask: Task<Void, Never>?
+    
+    init(modelContext: ModelContext?, initialMinerMacAddress: String?) {
+        self.modelContext = modelContext
+        self.initialMinerMacAddress = initialMinerMacAddress
+    }
+    
+    deinit {
+        notificationSubscription?.cancel()
+        debounceTask?.cancel()
+    }
+    
+    func setModelContext(_ context: ModelContext) {
+        self.modelContext = context
+    }
+    
+    private func setupNotificationSubscription() {
+        notificationSubscription = NotificationCenter.default
+            .publisher(for: .minerUpdateInserted)
+            .compactMap { notification in
+                notification.userInfo?["macAddress"] as? String
+            }
+            .debounce(for: .seconds(0.2), scheduler: RunLoop.main)
+            .filter { [weak self] macAddress in
+                self?.currentMiner?.macAddress == macAddress
+            }
+            .sink { [weak self] _ in
+                self?.refreshChartDataWithDebounce()
+            }
+    }
+    
+    private func refreshChartDataWithDebounce() {
+        // Cancel any existing debounce task
+        debounceTask?.cancel()
+        
+        debounceTask = Task { @MainActor in
+            // Wait 200ms to batch multiple rapid updates
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            
+            if !Task.isCancelled, let miner = currentMiner {
+                await loadChartData(for: miner, showLoading: false)
+            }
+        }
+    }
+    
+    func loadMiners() async {
+        guard let modelContext = modelContext else { return }
+        
+        isLoading = true
+        
+        do {
+            let descriptor = FetchDescriptor<Miner>(
+                sortBy: [SortDescriptor(\Miner.hostName)]
+            )
+            miners = try modelContext.fetch(descriptor)
+            
+            // Find the initial miner by macAddress if provided
+            if let initialMacAddress = initialMinerMacAddress,
+               let initialMiner = miners.first(where: { $0.macAddress == initialMacAddress }) {
+                currentMiner = initialMiner
+                await loadChartData(for: initialMiner)
+            } else if let firstMiner = miners.first {
+                // Fallback to first miner if no initial miner or initial not found
+                currentMiner = firstMiner
+                await loadChartData(for: firstMiner)
+            }
+            
+            // Set up notification subscription after initial load
+            setupNotificationSubscription()
+        } catch {
+            print("Error loading miners: \(error)")
+        }
+        
+        isLoading = false
+    }
+    
+    func loadChartData(for miner: Miner, showLoading: Bool = true) async {
+        guard let modelContext = modelContext else { return }
+
+        if showLoading {
+            isLoading = true
+        }
+
+        do {
+            let macAddress = miner.macAddress
+            let descriptor = FetchDescriptor<MinerUpdate>(
+                predicate: #Predicate<MinerUpdate> { update in
+                    update.macAddress == macAddress
+                },
+                sortBy: [SortDescriptor(\MinerUpdate.timestamp, order: .reverse)]
+            )
+            //            descriptor.fetchLimit = kDataPointCount
+
+            let updates = try modelContext.fetch(descriptor)
+
+            // Reverse to get chronological order (oldest first)
+            let sortedUpdates = updates.reversed()
+
+            let nextChartData = sortedUpdates.map { update in
+                ChartSegmentedDataEntry(
+                    time: Date(milliseconds: update.timestamp),
+                    values: [
+                        ChartSegmentValues(primary: update.hashRate, secondary: nil),
+                        ChartSegmentValues(primary: update.temp ?? 0, secondary: nil),
+                        ChartSegmentValues(primary: update.vrTemp ?? 0, secondary: nil),
+                        ChartSegmentValues(primary: Double(update.fanrpm ?? 0), secondary: Double(update.fanspeed ?? 0)),
+                        ChartSegmentValues(primary: update.power, secondary: nil),
+                        ChartSegmentValues(primary: (update.voltage ?? 0) / 1000.0, secondary: nil)
+                    ]
+                )
+            }
+            withAnimation {
+                chartData = nextChartData
+            }
+        } catch {
+            print("Error loading chart data: \(error)")
+            chartData = []
+        }
+
+        if showLoading {
+            isLoading = false
+        }
+    }
+
+    func selectMiner(_ miner: Miner) async {
+        guard currentMiner?.id != miner.id else { return }
+        
+        currentMiner = miner
+        await loadChartData(for: miner)
+        
+        // Update notification subscription for the new miner
+        setupNotificationSubscription()
+    }
+    
+    func nextMiner() async {
+        guard let current = currentMiner,
+              let currentIndex = miners.firstIndex(where: { $0.id == current.id }),
+              currentIndex < miners.count - 1 else { return }
+        
+        await selectMiner(miners[currentIndex + 1])
+    }
+    
+    func previousMiner() async {
+        guard let current = currentMiner,
+              let currentIndex = miners.firstIndex(where: { $0.id == current.id }),
+              currentIndex > 0 else { return }
+        
+        await selectMiner(miners[currentIndex - 1])
+    }
+    
+    var isNextMinerButtonDisabled: Bool {
+        guard let current = currentMiner,
+              let currentIndex = miners.firstIndex(where: { $0.id == current.id }) else {
+            return true
+        }
+        return currentIndex == miners.count - 1
+    }
+    
+    var isPreviousMinerButtonDisabled: Bool {
+        guard let current = currentMiner,
+              let currentIndex = miners.firstIndex(where: { $0.id == current.id }) else {
+            return true
+        }
+        return currentIndex == 0
+    }
+    
+    func mostRecentUpdateTitleValue(segmentIndex: Int) -> String {
+        let value = chartData.last?.values[segmentIndex]
+        switch ChartSegments(rawValue: segmentIndex) ?? .hashRate {
+        case .hashRate:
+            let f = formatMinerHashRate(rawRateValue: value?.primary ?? 0)
+            return "\(f.rateString)\(f.rateSuffix)"
+        case .voltage, .power:
+            return String(format: "%.1f", value?.primary ?? 0)
+        case .voltageRegulatorTemperature, .asicTemperature:
+            let mf = MeasurementFormatter()
+            mf.unitOptions = .providedUnit
+            mf.numberFormatter.maximumFractionDigits = 1
+            let temp = Measurement(value: value?.primary ?? 0, unit: UnitTemperature.celsius)
+            return mf.string(from: temp)
+        case .fanRPM:
+            let fanRPM = Int(value?.primary ?? 0)
+            let fanSpeedPct = Int(value?.secondary ?? 0)
+            return "\(fanRPM) · \(fanSpeedPct)%"
+        }
+    }
+}
