@@ -45,7 +45,6 @@ final public class AxeOSClient: Identifiable {
                 return .failure(.deviceResponseError(HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)))
             }
 
-            print("Issued restart to miner")
             return .success(true)
         } catch let error {
             return .failure(.unknownError(String(describing: error)))

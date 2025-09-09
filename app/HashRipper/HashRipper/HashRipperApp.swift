@@ -82,5 +82,20 @@ struct HashRipperApp: App {
         .firmwareDownloadsManager(firmwareDownloadsManager)
         .defaultSize(width: 600, height: 400)
         
+        Window("WatchDog Actions", id: MinerWatchDogActionsView.windowGroupId) {
+            MinerWatchDogActionsView()
+        }
+        .modelContainer(SharedDatabase.shared.modelContainer)
+        .database(SharedDatabase.shared.database)
+        .defaultSize(width: 700, height: 600)
+        
+        Window("Settings", id: SettingsWindow.windowGroupId) {
+            SettingsWindow()
+        }
+        .modelContainer(SharedDatabase.shared.modelContainer)
+        .database(SharedDatabase.shared.database)
+        .defaultSize(width: 500, height: 400)
+        .windowResizability(.contentSize)
+        
     }
 }

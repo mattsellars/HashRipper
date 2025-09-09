@@ -6,10 +6,16 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct HashOpsToolbarItems: View {
     @Environment(\.newMinerScanner) private var deviceRefresher
     @Environment(\.minerClientManager) private var minerClientManager
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.modelContext) private var modelContext
+    
+    @Query(filter: #Predicate<WatchDogActionLog> { $0.isRead == false })
+    private var unreadActions: [WatchDogActionLog]
 
     var addNewMiner: () -> Void
     var rolloutProfile: () -> Void
@@ -63,6 +69,25 @@ struct HashOpsToolbarItems: View {
                 Image(systemName: "stethoscope")
             }
             .help("Record websocket data from miners")
+            
+            Button(action: openWatchDogActionsWindow) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "shield.checkered")
+                    
+                    if !unreadActions.isEmpty {
+                        Circle()
+                            .fill(.red)
+                            .frame(width: 8, height: 8)
+                            .offset(x: 6, y: -6)
+                    }
+                }
+            }
+            .help("View WatchDog action history")
+            
+            Button(action: openSettingsWindow) {
+                Image(systemName: "gearshape")
+            }
+            .help("Open Settings")
         }
     }
 
@@ -82,5 +107,13 @@ struct HashOpsToolbarItems: View {
         Task {
             await self.deviceRefresher?.rescanDevicesStreaming()
         }
+    }
+    
+    private func openWatchDogActionsWindow() {
+        openWindow(id: MinerWatchDogActionsView.windowGroupId)
+    }
+    
+    private func openSettingsWindow() {
+        openWindow(id: SettingsWindow.windowGroupId)
     }
 }

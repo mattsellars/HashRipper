@@ -12,9 +12,12 @@ import SwiftData
 @Observable
 class MinerWatchDog {
     static let RESTART_COOLDOWN_INTERVAL: TimeInterval = 180 // 3 minutes
+    static let CHECK_THROTTLE_INTERVAL: TimeInterval = 30 // 30 seconds
     
     // Track restart attempts to prevent multiple restarts
     private var minerRestartTimestamps: [String: Int64] = [:]
+    // Track last check time to throttle frequent checks
+    private var minerLastCheckTimestamps: [String: Int64] = [:]
     private let restartLock = UnfairLock()
     private let database: Database
     
@@ -24,7 +27,7 @@ class MinerWatchDog {
     
     init(database: Database) {
         self.database = database
-        isPaused = true
+        isPaused = false
     }
     
     func checkForRestartCondition(minerIpAddress: String) {
@@ -34,6 +37,31 @@ class MinerWatchDog {
             return
         }
         
+        // Check if WatchDog is globally enabled
+        let settings = AppSettings.shared
+        guard settings.isWatchdogGloballyEnabled else {
+            return
+        }
+        
+        // Throttle check frequency to prevent excessive database queries
+        let currentTimestamp = Date().millisecondsSince1970
+        let shouldSkipCheck = restartLock.perform {
+            if let lastCheckTime = minerLastCheckTimestamps[minerIpAddress] {
+                let timeSinceLastCheck = currentTimestamp - lastCheckTime
+                return timeSinceLastCheck < Int64(Self.CHECK_THROTTLE_INTERVAL * 1000)
+            }
+            return false
+        }
+        
+        guard !shouldSkipCheck else {
+            return
+        }
+        
+        // Update last check timestamp
+        restartLock.perform {
+            minerLastCheckTimestamps[minerIpAddress] = currentTimestamp
+        }
+        
         Task {
             let (shouldRestart, miner) = await database.withModelContext { context -> (Bool, Miner?) in
                 // Get the most recent 3 updates for this miner, excluding failed updates
@@ -41,6 +69,11 @@ class MinerWatchDog {
                     let miners = try? context.fetch(FetchDescriptor<Miner>()),
                     let miner = miners.first(where: { $0.ipAddress == minerIpAddress})
                 else { return (false, nil) }
+                
+                // Check if this specific miner is enabled for WatchDog monitoring
+                guard settings.isWatchdogEnabled(for: miner.macAddress) else {
+                    return (false, nil)
+                }
 
                 let monitoringPaused = self.pauseLock.perform { self.isPaused }
                 guard !monitoringPaused else {
@@ -49,14 +82,7 @@ class MinerWatchDog {
 
                 // Get recent successful updates for this miner
                 let macAddress = miner.macAddress
-                var recentUpdatesDescriptor = FetchDescriptor<MinerUpdate>(
-                    predicate: #Predicate<MinerUpdate> { update in
-                        update.macAddress == macAddress && !update.isFailedUpdate
-                    },
-                    sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
-                )
-                recentUpdatesDescriptor.fetchLimit = 3
-                let recentUpdates = (try? context.fetch(recentUpdatesDescriptor)) ?? []
+                let recentUpdates = miner.getRecentUpdates(from: context, limit: 8)
 
                 guard recentUpdates.count >= 3 else {
                     return (false, nil)
@@ -121,19 +147,19 @@ class MinerWatchDog {
                     return (false, nil)
                 }
 
-                print("Miner \(miner.hostName) (\(miner.ipAddress)) meets restart criteria: 3 consecutive updates with power <= 0.1 and unchanged hashrate (\(firstHashRate)). Issuing restart...")
+                print("Miner \(miner.hostName) (\(miner.ipAddress)) meets restart criteria: \(updates.count) consecutive updates with power <= 0.1 and unchanged hashrate (\(firstHashRate)). Issuing restart...")
 
                 return (true, miner)
             }
             
             // Issue restart outside of the model context if needed
             if shouldRestart, let miner = miner {
-                await issueRestart(to: miner.ipAddress, minerName: miner.hostName)
+                await issueRestart(to: miner.ipAddress, minerName: miner.hostName, minerMacAddress: miner.macAddress)
             }
         }
     }
     
-    private func issueRestart(to minerIpAddress: String, minerName: String) async {
+    private func issueRestart(to minerIpAddress: String, minerName: String, minerMacAddress: String) async {
         // Record restart attempt
         restartLock.perform {
             minerRestartTimestamps[minerIpAddress] = Date().millisecondsSince1970
@@ -153,12 +179,38 @@ class MinerWatchDog {
             restartLock.perform {
                 minerRestartTimestamps[minerIpAddress] = Date().millisecondsSince1970
             }
+            
+            // Log the successful restart action
+            await logWatchdogAction(
+                minerMacAddress: minerMacAddress,
+                action: .restartMiner,
+                reason: "Automatic restart due to low power (≤0.1W) and unchanged hashrate detected"
+            )
 
         case .failure(let error):
             print("Failed to restart miner \(minerName) (\(minerIpAddress)): \(error)")
             // Remove from tracking if restart failed so we can try again sooner
             restartLock.perform {
                 minerRestartTimestamps.removeValue(forKey: minerIpAddress)
+            }
+        }
+    }
+    
+    private func logWatchdogAction(minerMacAddress: String, action: Action, reason: String) async {
+        await database.withModelContext { context in
+            let actionLog = WatchDogActionLog(
+                minerMacAddress: minerMacAddress,
+                action: action,
+                reason: reason,
+                timestamp: Date().millisecondsSince1970
+            )
+            context.insert(actionLog)
+            
+            do {
+                try context.save()
+                print("WatchDog action logged: \(action) for miner \(minerMacAddress)")
+            } catch {
+                print("Failed to save WatchDog action log: \(error)")
             }
         }
     }

@@ -113,8 +113,12 @@ actor MinerRefreshScheduler {
 @Observable
 class MinerClientManager {
 //    static let MAX_FAILURE_COUNT: Int = 5
-    static let REFRESH_INTERVAL: TimeInterval = 4
-    static let BACKGROUND_REFRESH_INTERVAL: TimeInterval = 10
+    static var REFRESH_INTERVAL: TimeInterval { 
+        AppSettings.shared.minerRefreshInterval 
+    }
+    static var BACKGROUND_REFRESH_INTERVAL: TimeInterval { 
+        AppSettings.shared.backgroundPollingInterval 
+    }
 
     // Track pending refresh requests to prevent pileup
     static var pendingRefreshIPs: Set<IPAddress> = []
@@ -241,6 +245,13 @@ class MinerClientManager {
     @MainActor
     func isWatchDogMonitoringPaused() -> Bool {
         return watchDog.isMonitoringPaused()
+    }
+    
+    @MainActor
+    func refreshIntervalSettingsChanged() {
+        // Settings have changed, schedulers will pick up new intervals naturally
+        // on their next sleep cycle. No need to cancel/restart active refreshes.
+        print("Refresh interval settings changed - schedulers will use new intervals on next cycle")
     }
     
     func refreshClientInfo() {

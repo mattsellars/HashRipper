@@ -176,13 +176,13 @@ struct FirmwareDeploymentWizard: View {
         .onAppear {
             model.deploymentManager = deploymentManager
             // Pause watchdog monitoring while firmware deployment wizard is open
-//            clientManager.pauseWatchDogMonitoring()
+            clientManager.pauseWatchDogMonitoring()
         }
         .onDisappear {
             // Clean up completed deployments when wizard is dismissed
             deploymentManager.clearCompletedDeployments()
             // Resume watchdog monitoring when wizard is dismissed
-//            clientManager.resumeWatchDogMonitoring()
+            clientManager.resumeWatchDogMonitoring()
         }
         .onChange(of: model.stage) { _, newValue in
             if newValue == .deployment {
