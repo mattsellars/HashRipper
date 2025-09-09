@@ -34,13 +34,21 @@ struct MinerWatchDogActionsView: View {
                         description: Text("The WatchDog hasn't performed any automatic miner restarts yet.")
                     )
                 } else {
-                    List {
-                        ForEach(actionLogs) { actionLog in
-                            WatchDogActionItemView(actionLog: actionLog, miners: allMiners)
-                                .opacity(actionLog.isRead ? 0.8 : 1.0)
+                    ScrollViewReader { proxy in
+                        List {
+                            ForEach(actionLogs) { actionLog in
+                                WatchDogActionItemView(actionLog: actionLog, miners: allMiners)
+                                    .opacity(actionLog.isRead ? 0.8 : 1.0)
+                            }
+                        }
+                        .listStyle(.inset)
+                        .onAppear {
+                            // Scroll to top without animation when window opens
+                            if let firstActionLog = actionLogs.first {
+                                proxy.scrollTo(firstActionLog.id, anchor: .top)
+                            }
                         }
                     }
-                    .listStyle(.inset)
                     
                     HStack {
                         Button("Clear All History") {

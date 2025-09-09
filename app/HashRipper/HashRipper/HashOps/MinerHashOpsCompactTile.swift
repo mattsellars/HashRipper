@@ -108,8 +108,23 @@ struct MinerHashOpsCompactTile: View {
             return
         }
         
-        availableFirmwareRelease = await firmwareViewModel.getLatestFirmwareRelease(for: miner.minerType)
-        hasAvailableFirmwareUpdate = await firmwareViewModel.hasFirmwareUpdate(minerVersion: currentVersion, minerType: miner.minerType)
+        do {
+            // Reset state before checking
+            hasAvailableFirmwareUpdate = false
+            availableFirmwareRelease = nil
+            
+            // Check for available firmware in a safer way
+            let latestRelease = await firmwareViewModel.getLatestFirmwareRelease(for: miner.minerType)
+            let hasUpdate = await firmwareViewModel.hasFirmwareUpdate(minerVersion: currentVersion, minerType: miner.minerType)
+            
+            // Only update if we successfully got results
+            availableFirmwareRelease = latestRelease
+            hasAvailableFirmwareUpdate = hasUpdate
+        } catch {
+            print("Error checking firmware update for \(miner.hostName): \(error)")
+            hasAvailableFirmwareUpdate = false
+            availableFirmwareRelease = nil
+        }
     }
 
     var body: some View {

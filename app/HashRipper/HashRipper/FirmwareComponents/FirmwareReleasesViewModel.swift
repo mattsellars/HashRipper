@@ -43,43 +43,71 @@ final class FirmwareReleasesViewModel: Sendable {
     }
 
     func hasFirmwareUpdate(minerVersion: String, minerType: MinerType) async -> Bool {
-        guard let latestRelease = await getLatestFirmwareRelease(for: minerType) else {
+        do {
+            return try await database.withModelContext { context in
+                let releases = try context.fetch(FetchDescriptor<FirmwareRelease>())
+                
+                let compatibleReleases = releases.filter { release in
+                    switch minerType.deviceGenre {
+                    case .bitaxe:
+                        return release.device == "Bitaxe"
+                    case .nerdQAxe:
+                        guard let deviceModel = self.getDeviceModelFromMinerType(minerType) else {
+                            return false
+                        }
+                        return release.device == deviceModel
+                    case .unknown:
+                        return false
+                    }
+                }
+                
+                let filteredReleases = self.showPreReleases ? compatibleReleases : compatibleReleases.filter { !$0.isPreRelease }
+                
+                guard let latestRelease = filteredReleases
+                    .filter({ !$0.isDraftRelease })
+                    .sorted(by: { $0.releaseDate > $1.releaseDate })
+                    .first else {
+                    return false
+                }
+                
+                return self.compareVersions(current: minerVersion, latest: latestRelease.versionTag)
+            }
+        } catch {
+            print("Error checking firmware update: \(error)")
             return false
         }
-        
-        return compareVersions(current: minerVersion, latest: latestRelease.versionTag)
     }
     
     func getLatestFirmwareRelease(for minerType: MinerType) async -> FirmwareRelease? {
-        let releases: [FirmwareRelease]
         do {
-            releases = try await database.withModelContext { context in
-                try context.fetch(FetchDescriptor<FirmwareRelease>())
+            return try await database.withModelContext { context in
+                let releases = try context.fetch(FetchDescriptor<FirmwareRelease>())
+                
+                let compatibleReleases = releases.filter { release in
+                    switch minerType.deviceGenre {
+                    case .bitaxe:
+                        return release.device == "Bitaxe"
+                    case .nerdQAxe:
+                        guard let deviceModel = self.getDeviceModelFromMinerType(minerType) else {
+                            return false
+                        }
+                        return release.device == deviceModel
+                    case .unknown:
+                        return false
+                    }
+                }
+                
+                let filteredReleases = self.showPreReleases ? compatibleReleases : compatibleReleases.filter { !$0.isPreRelease }
+                
+                return filteredReleases
+                    .filter { !$0.isDraftRelease }
+                    .sorted { $0.releaseDate > $1.releaseDate }
+                    .first
             }
         } catch {
+            print("Error fetching firmware releases: \(error)")
             return nil
         }
-        
-        let compatibleReleases = releases.filter { release in
-            switch minerType.deviceGenre {
-            case .bitaxe:
-                return release.device == "Bitaxe"
-            case .nerdQAxe:
-                guard let deviceModel = getDeviceModelFromMinerType(minerType) else {
-                    return false
-                }
-                return release.device == deviceModel
-            case .unknown:
-                return false
-            }
-        }
-        
-        let filteredReleases = showPreReleases ? compatibleReleases : compatibleReleases.filter { !$0.isPreRelease }
-        
-        return filteredReleases
-            .filter { !$0.isDraftRelease }
-            .sorted { $0.releaseDate > $1.releaseDate }
-            .first
     }
     
     private func getDeviceModelFromMinerType(_ minerType: MinerType) -> String? {
