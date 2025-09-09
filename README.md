@@ -58,6 +58,20 @@ Step 3. Roll it out!
 <img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 57 58 PM" src="https://github.com/user-attachments/assets/33eefe58-f943-41ad-b253-adbafaa0cc03" />
 
 
+### Miner Watch Dog
+Allow watch dog to monitor your miners for indicators that it has stopped hashing or for some reason power usage dropped indicating an error. In these scenarios watch dog will issue a restart request to the miner to get it back up and hashing while you're not watching. Open the watch dog actions log to check what actions have happened while you were away. You can configure which miners are monitored by watch dog in settings.
+
+<img width="813" height="765" alt="Screenshot 2025-09-08 at 8 06 04 PM" src="https://github.com/user-attachments/assets/c4bf55df-338c-46bb-89a1-27b7e96f8faf" />
+
+
+### HashRipper Settings
+Configured general miner polling intervals for the app
+<img width="912" height="700" alt="Screenshot 2025-09-08 at 8 13 03 PM" src="https://github.com/user-attachments/assets/6abbc208-b27c-4234-a042-5f0f072c06ff" />
+
+
+Configure watch dog and what miners are monitored
+<img width="912" height="700" alt="Screenshot 2025-09-08 at 8 12 59 PM" src="https://github.com/user-attachments/assets/cc274c26-c0b9-479f-ac62-d8713eea911b" />
+
 
 At some point I'll build a release binary but until then if you want to give it a go
 
