@@ -17,18 +17,24 @@ public class WatchDogActionLog {
     public var reason: String
     public var timestamp: Int64
     public var isRead: Bool
+    public var minerFirmwareVersion: String?
+    public var axeOSVersion: String?
 
     public init(
         minerMacAddress: String,
         action: Action,
         reason: String,
         timestamp: Int64,
-        isRead: Bool = false
+        isRead: Bool = false,
+        minerFirmwareVersion: String? = nil,
+        axeOSVersion: String? = nil
     ) {
         self.minerMacAddress = minerMacAddress
         self.action = action
         self.reason = reason
         self.timestamp = timestamp
         self.isRead = isRead
+        self.minerFirmwareVersion = minerFirmwareVersion
+        self.axeOSVersion = axeOSVersion
     }
 }

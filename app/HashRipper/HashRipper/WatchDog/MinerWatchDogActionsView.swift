@@ -223,6 +223,44 @@ struct WatchDogActionItemView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             
+            // Version information if available
+            if actionLog.minerFirmwareVersion != nil || actionLog.axeOSVersion != nil {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Firmware Version:")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 12) {
+                        if let firmwareVersion = actionLog.minerFirmwareVersion {
+                            HStack(spacing: 4) {
+                                Image(systemName: "f.circle")
+                                    .font(.caption2)
+                                    .foregroundColor(.purple)
+                                Text("Firmware: \(firmwareVersion)")
+                                    .font(.caption)
+                                    .fontDesign(.monospaced)
+                            }
+                        }
+                        
+                        if let axeOSVersion = actionLog.axeOSVersion {
+                            HStack(spacing: 4) {
+                                Image(systemName: "v.circle")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                                Text("AxeOS: \(axeOSVersion)")
+                                    .font(.caption)
+                                    .fontDesign(.monospaced)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            
             // Footer with exact timestamp and MAC address
             HStack {
                 HStack(spacing: 4) {

@@ -198,17 +198,35 @@ class MinerWatchDog {
     
     private func logWatchdogAction(minerMacAddress: String, action: Action, reason: String) async {
         await database.withModelContext { context in
+            // Get the latest miner update to capture version information
+            var latestUpdate: MinerUpdate?
+            do {
+                var descriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == minerMacAddress && !update.isFailedUpdate
+                    },
+                    sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+                )
+                descriptor.fetchLimit = 1
+                latestUpdate = try context.fetch(descriptor).first
+            } catch {
+                print("Failed to fetch latest miner update for logging: \(error)")
+            }
+            
             let actionLog = WatchDogActionLog(
                 minerMacAddress: minerMacAddress,
                 action: action,
                 reason: reason,
-                timestamp: Date().millisecondsSince1970
+                timestamp: Date().millisecondsSince1970,
+                isRead: false,
+                minerFirmwareVersion: latestUpdate?.minerFirmwareVersion,
+                axeOSVersion: latestUpdate?.axeOSVersion
             )
             context.insert(actionLog)
             
             do {
                 try context.save()
-                print("WatchDog action logged: \(action) for miner \(minerMacAddress)")
+                print("WatchDog action logged: \(action) for miner \(minerMacAddress) - firmware: \(latestUpdate?.minerFirmwareVersion ?? "unknown"), axeOS: \(latestUpdate?.axeOSVersion ?? "unknown")")
             } catch {
                 print("Failed to save WatchDog action log: \(error)")
             }
