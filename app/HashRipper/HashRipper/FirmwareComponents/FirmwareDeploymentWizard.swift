@@ -150,8 +150,10 @@ struct FirmwareDeploymentWizard: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.firmwareDeploymentManager) private var deploymentManager: FirmwareDeploymentManager!
     @Environment(\.minerClientManager) private var clientManager: MinerClientManager!
+    @Environment(\.scenePhase) private var scenePhase
     
     @State private var model: FirmwareDeploymentWizardModel
+    @State private var hasActiveDeployment: Bool = false
     
     init(firmwareRelease: FirmwareRelease) {
         self._model = State(initialValue: FirmwareDeploymentWizardModel(firmwareRelease: firmwareRelease))
@@ -179,10 +181,25 @@ struct FirmwareDeploymentWizard: View {
             clientManager.pauseWatchDogMonitoring()
         }
         .onDisappear {
-            // Clean up completed deployments when wizard is dismissed
-            deploymentManager.clearCompletedDeployments()
-            // Resume watchdog monitoring when wizard is dismissed
-            clientManager.resumeWatchDogMonitoring()
+            // Only clean up if there are no active deployments
+            // This prevents backgrounding from cancelling active deployments
+            if !hasActiveDeployment {
+                deploymentManager.clearCompletedDeployments()
+                clientManager.resumeWatchDogMonitoring()
+            }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            // Track active deployments to prevent cleanup during backgrounding
+            hasActiveDeployment = !deploymentManager.activeDeployments.isEmpty
+            
+            // Only resume watchdog when app becomes active AND no deployments are running
+            if newPhase == .active && !hasActiveDeployment {
+                // Re-check in case deployments completed while backgrounded
+                hasActiveDeployment = !deploymentManager.activeDeployments.isEmpty
+                if !hasActiveDeployment {
+                    clientManager.resumeWatchDogMonitoring()
+                }
+            }
         }
         .onChange(of: model.stage) { _, newValue in
             if newValue == .deployment {
@@ -279,10 +296,14 @@ struct FirmwareDeploymentWizard: View {
                 Spacer()
                 
                 Button("Close") {
+                    if deploymentManager.activeDeployments.isEmpty {
+                        // Safe to clean up and close when no active deployments
+                        deploymentManager.clearCompletedDeployments()
+                        clientManager.resumeWatchDogMonitoring()
+                        deploymentManager.reset()
+                    }
                     dismiss()
-                    deploymentManager.reset()
                 }
-                .disabled(deploymentManager.activeDeployments.count > 0)
                 .keyboardShortcut(.cancelAction)
             }
         }
@@ -599,12 +620,24 @@ private struct DeploymentScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .task {
-            // Start deployment when this screen appears
-            await deploymentManager.startDeployment(
-                miners: selectedMiners,
-                firmwareRelease: model.firmwareRelease
-            )
+        .onAppear {
+            // Check if deployment is already running for this firmware version
+            let existingDeployments = deploymentManager.deployments.filter { deployment in
+                deployment.firmwareRelease.versionTag == model.firmwareRelease.versionTag &&
+                model.selectedMinerIPs.contains(deployment.miner.ipAddress)
+            }
+            
+            // Only start deployment if none are already running
+            if existingDeployments.isEmpty {
+                // Start deployment using a detached task that won't be cancelled when view disappears
+                // This ensures deployment continues even if the app is backgrounded
+                Task.detached {
+                    await deploymentManager.startDeployment(
+                        miners: selectedMiners,
+                        firmwareRelease: model.firmwareRelease
+                    )
+                }
+            }
         }
     }
     
