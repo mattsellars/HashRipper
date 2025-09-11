@@ -21,6 +21,9 @@ struct HashRipperApp: App {
             downloadsManager: firmwareDownloadsManager
         )
         
+        // Connect deployment manager to client manager for watchdog integration
+        minerClientManager.setDeploymentManager(firmwareDeploymentManager)
+        
         // Connect NewMinerScanner to MinerClientManager
         newMinerScanner.onNewMinersDiscovered = { [weak minerClientManager] ipAddresses in
             Task { @MainActor in

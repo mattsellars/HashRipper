@@ -20,13 +20,15 @@ class MinerWatchDog {
     private var minerLastCheckTimestamps: [String: Int64] = [:]
     private let restartLock = UnfairLock()
     private let database: Database
+    private weak var deploymentManager: FirmwareDeploymentManager?
     
     // Monitoring state
     private var isPaused: Bool = false
     private let pauseLock = UnfairLock()
     
-    init(database: Database) {
+    init(database: Database, deploymentManager: FirmwareDeploymentManager? = nil) {
         self.database = database
+        self.deploymentManager = deploymentManager
         isPaused = false
     }
     
@@ -36,13 +38,13 @@ class MinerWatchDog {
         guard !monitoringPaused else {
             return
         }
-        
+
         // Check if WatchDog is globally enabled
         let settings = AppSettings.shared
         guard settings.isWatchdogGloballyEnabled else {
             return
         }
-        
+
         // Throttle check frequency to prevent excessive database queries
         let currentTimestamp = Date().millisecondsSince1970
         let shouldSkipCheck = restartLock.perform {
@@ -52,40 +54,60 @@ class MinerWatchDog {
             }
             return false
         }
-        
+
         guard !shouldSkipCheck else {
             return
         }
-        
+
         // Update last check timestamp
         restartLock.perform {
             minerLastCheckTimestamps[minerIpAddress] = currentTimestamp
         }
-        
+
         Task {
-            let (shouldRestart, miner) = await database.withModelContext { context -> (Bool, Miner?) in
-                // Get the most recent 3 updates for this miner, excluding failed updates
+            // First check for active deployment outside database context
+            let miner = await database.withModelContext { context -> Miner? in
                 guard
                     let miners = try? context.fetch(FetchDescriptor<Miner>()),
                     let miner = miners.first(where: { $0.ipAddress == minerIpAddress})
-                else { return (false, nil) }
-                
+                else { return nil }
+
                 // Check if this specific miner is enabled for WatchDog monitoring
                 guard settings.isWatchdogEnabled(for: miner.macAddress) else {
-                    return (false, nil)
+                    return nil
                 }
 
                 let monitoringPaused = self.pauseLock.perform { self.isPaused }
                 guard !monitoringPaused else {
-                    return (false, nil)
+                    return nil
+                }
+
+                return miner
+            }
+
+            guard let miner = miner else { return }
+
+            // Check for active deployment outside database context (MainActor isolated)
+            let hasActiveDeployment = await checkForActiveDeployment(minerIpAddress: minerIpAddress)
+            guard !hasActiveDeployment else {
+                print("[MinerWatchDog] Skipping miner \(miner.hostName) (\(minerIpAddress)) - active firmware deployment")
+                return
+            }
+
+            // Now do all the restart logic in a single database context
+            let shouldRestart = await database.withModelContext { context -> Bool in
+                guard
+                    let miners = try? context.fetch(FetchDescriptor<Miner>()),
+                    let miner = miners.first(where: { $0.ipAddress == minerIpAddress})
+                else {
+                    return false
                 }
 
                 // Get recent successful updates for this miner
-                let macAddress = miner.macAddress
                 let recentUpdates = miner.getRecentUpdates(from: context, limit: 8)
 
                 guard recentUpdates.count >= 3 else {
-                    return (false, nil)
+                    return false
                 }
 
                 let updates = Array(recentUpdates)
@@ -106,13 +128,13 @@ class MinerWatchDog {
                             self.minerRestartTimestamps.removeValue(forKey: minerIpAddress)
                         }
                         print("Miner \(miner.hostName) (\(minerIpAddress)) has recovered with hashrate \(updates.first?.hashRate ?? 0)")
-                        return (false, nil)
+                        return false
                     }
-                    
+
                     if timeSinceRestart < Int64(Self.RESTART_COOLDOWN_INTERVAL * 1000) {
                         let remainingTime = Int64(Self.RESTART_COOLDOWN_INTERVAL * 1000) - timeSinceRestart
                         print("Miner \(miner.hostName) (\(minerIpAddress)) restart cooldown active. Remaining: \(remainingTime/1000) seconds")
-                        return (false, nil)
+                        return false
                     } else {
                         // Check again if miner has recovered after cooldown period
                         let hasRecovered = (updates.first?.hashRate ?? 0) > 0
@@ -122,7 +144,7 @@ class MinerWatchDog {
                                 self.minerRestartTimestamps.removeValue(forKey: minerIpAddress)
                             }
                             print("Miner \(miner.hostName) (\(minerIpAddress)) has recovered with hashrate \(updates.first?.hashRate ?? 0)")
-                            return (false, nil)
+                            return false
                         }
                     }
                 }
@@ -134,7 +156,7 @@ class MinerWatchDog {
 
                 guard allHaveLowPower else {
                     print("[MinerWatchDog] Miner \(miner.hostName) (\(miner.ipAddress)) power levels healthy ✅")
-                    return (false, nil)
+                    return false
                 }
 
                 print("[MinerWatchDog] Miner \(miner.hostName) (\(miner.ipAddress)) unhealthy power levels detected ‼️")
@@ -144,21 +166,21 @@ class MinerWatchDog {
                 let hashrateUnchanged = hashRates.allSatisfy { abs($0 - firstHashRate) < 0.001 }
 
                 guard hashrateUnchanged else {
-                    return (false, nil)
+                    return false
                 }
 
                 print("Miner \(miner.hostName) (\(miner.ipAddress)) meets restart criteria: \(updates.count) consecutive updates with power <= 0.1 and unchanged hashrate (\(firstHashRate)). Issuing restart...")
 
-                return (true, miner)
+                return true
             }
-            
+
             // Issue restart outside of the model context if needed
-            if shouldRestart, let miner = miner {
+            if shouldRestart {
                 await issueRestart(to: miner.ipAddress, minerName: miner.hostName, minerMacAddress: miner.macAddress)
             }
         }
     }
-    
+
     private func issueRestart(to minerIpAddress: String, minerName: String, minerMacAddress: String) async {
         // Record restart attempt
         restartLock.perform {
@@ -290,6 +312,21 @@ class MinerWatchDog {
     
     func isMonitoringPaused() -> Bool {
         return pauseLock.perform { isPaused }
+    }
+    
+    // MARK: - Deployment Manager Integration
+    
+    func setDeploymentManager(_ deploymentManager: FirmwareDeploymentManager) {
+        self.deploymentManager = deploymentManager
+    }
+    
+    @MainActor
+    private func checkForActiveDeployment(minerIpAddress: String) async -> Bool {
+        guard let deploymentManager = deploymentManager else { return false }
+        
+        return deploymentManager.activeDeployments.contains { deployment in
+            deployment.miner.ipAddress == minerIpAddress
+        }
     }
 }
 

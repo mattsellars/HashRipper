@@ -127,6 +127,11 @@ class MinerClientManager {
     private let database: Database
     public let firmwareReleaseViewModel: FirmwareReleasesViewModel
     public let watchDog: MinerWatchDog
+    
+    // Method to set the deployment manager reference for watchdog
+    public func setDeploymentManager(_ deploymentManager: FirmwareDeploymentManager) {
+        watchDog.setDeploymentManager(deploymentManager)
+    }
 
     // Per-miner refresh schedulers
     private var minerSchedulers: [IPAddress: MinerRefreshScheduler] = [:]

@@ -189,11 +189,11 @@ struct MinerHashOpsCompactTile: View {
                 }
             )
         }
-
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(colorScheme == .light ? Color.black.opacity(0.4) : Color.gray, lineWidth: 1)
         )
+        .background(.ultraThinMaterial)
         .clipShape(
             RoundedRectangle(cornerRadius: 8)
         )
@@ -202,7 +202,6 @@ struct MinerHashOpsCompactTile: View {
                 Text("Restart")
             }
         }
-        .background(.ultraThinMaterial)
         .sheet(isPresented: $showFirmwareReleaseNotes) {
             if let firmwareRelease = availableFirmwareRelease {
                 FirmwareReleaseNotesView(firmwareRelease: firmwareRelease) {
