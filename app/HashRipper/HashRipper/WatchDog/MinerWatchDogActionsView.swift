@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Charts
 
 struct MinerWatchDogActionsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -34,6 +35,19 @@ struct MinerWatchDogActionsView: View {
                         description: Text("The WatchDog hasn't performed any automatic miner restarts yet.")
                     )
                 } else {
+                    // Chart at top showing restarts over time
+                    WatchDogRestartChart(actionLogs: actionLogs, allMiners: allMiners)
+                        .frame(height: 180)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.controlBackgroundColor))
+                        .overlay(
+                            Rectangle()
+                                .frame(height: 0.5)
+                                .foregroundColor(Color(NSColor.separatorColor)),
+                            alignment: .bottom
+                        )
+                    
                     ScrollViewReader { proxy in
                         List {
                             ForEach(actionLogs) { actionLog in
@@ -312,6 +326,353 @@ struct WatchDogActionItemView: View {
             return "Miner Restarted"
         }
     }
+}
+
+// MARK: - Restart Chart View
+
+struct WatchDogRestartChart: View {
+    let actionLogs: [WatchDogActionLog]
+    let allMiners: [Miner]
+    
+    @State private var selectedDataPoint: ChartDataPoint?
+    @State private var scrollPosition: ScrollPosition = ScrollPosition()
+    
+    struct ChartDataPoint: Identifiable, Equatable {
+        let id: String
+        let date: Date
+        let count: Int
+        let hour: String
+        let actionLogs: [WatchDogActionLog]
+
+        init(date: Date, count: Int, hour: String, actionLogs: [WatchDogActionLog]) {
+            self.id = "\(date.timeIntervalSince1970)"
+            self.date = date
+            self.count = count
+            self.hour = hour
+            self.actionLogs = actionLogs
+        }
+
+        static func == (lhs: ChartDataPoint, rhs: ChartDataPoint) -> Bool {
+            lhs.id == rhs.id
+        }
+    }
+    
+    private var chartData: [ChartDataPoint] {
+        guard !actionLogs.isEmpty else { return [] }
+        
+        // Group actions by hour
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: actionLogs) { actionLog in
+            let date = Date(timeIntervalSince1970: Double(actionLog.timestamp) / 1000.0)
+            return calendar.dateInterval(of: .hour, for: date)?.start ?? date
+        }
+        
+        // Convert to chart data points
+        let dataPoints = grouped.map { (hourStart, actions) in
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            return ChartDataPoint(
+                date: hourStart,
+                count: actions.count,
+                hour: formatter.string(from: hourStart),
+                actionLogs: actions
+            )
+        }.sorted { $0.date < $1.date }
+        
+        // Only return actual data points, no filling in missing hours
+        // This prevents too many empty bars from being shown
+        if selectedDataPoint == nil {
+            DispatchQueue.main.async {
+                selectedDataPoint = dataPoints.last
+            }
+        }
+        return dataPoints
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            headerView
+            
+            if chartData.isEmpty {
+                emptyChartView
+            } else {
+                chartAndCardView
+            }
+        }
+    }
+    
+    private var headerView: some View {
+        HStack {
+            Image(systemName: "chart.bar.fill")
+                .foregroundColor(.orange)
+            Text("Restart Activity")
+                .font(.headline)
+                .fontWeight(.medium)
+            Spacer()
+            Text("\(actionLogs.count) total restarts")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private var emptyChartView: some View {
+        Text("No data to display")
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    private var chartAndCardView: some View {
+        HStack(spacing: 16) {
+            scrollableChartView
+            detailCardView
+        }
+        .animation(.easeInOut(duration: 0.3), value: selectedDataPoint)
+    }
+    
+    private var scrollableChartView: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                chartView
+            }
+            .scrollTargetLayout()
+            .scrollPosition($scrollPosition, anchor: .trailing)
+            .onChange(of: selectedDataPoint) {
+                guard let id: String = selectedDataPoint?.id else { return }
+
+                withAnimation {
+                    proxy.scrollTo(id, anchor: .bottom)
+                }
+            }
+        }
+        .onAppear {
+            setupInitialSelection()
+            setupInitialScroll()
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var chartView: some View {
+        Chart(chartData, id: \.id) { point in
+            BarMark(
+                x: .value("Time", point.date),
+                y: .value("Restarts", point.count)
+            )
+            .foregroundStyle(
+                selectedDataPoint?.date == point.date ?
+                Gradient(colors: [Color.blue, Color.orange]): Gradient(colors: [Color.orange.opacity(0.6)])
+
+//                Color.orange : Color.orange.opacity(0.6)
+            )
+            .opacity(point.count > 0 ? 1.0 : 0.3)
+        }
+        .chartXAxis {
+            AxisMarks(values: .stride(by: .hour, count: 1)) { value in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(DateFormatter.shortTime.string(from: date))
+                            .font(.caption2)
+                            .rotationEffect(.degrees(90))
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks { value in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel {
+                    if let count = value.as(Int.self) {
+                        Text("\(count)")
+                            .font(.caption2)
+                    }
+                }
+            }
+        }
+        .chartYScale(domain: 0...(chartData.map(\.count).max() ?? 1))
+        .chartGesture { chartProxy in
+            SpatialTapGesture()
+                .onEnded { value in
+                    handleChartTap(location: value.location, chartProxy: chartProxy)
+                }
+        }
+        .frame(width: max(400, CGFloat(chartData.count * 28)))
+        .frame(maxHeight: .infinity)
+    }
+    
+    private var detailCardView: some View {
+        RestartDetailCard(
+            dataPoint: selectedDataPoint,
+            allMiners: allMiners,
+            onDismiss: { 
+                selectedDataPoint = nil
+            }
+        )
+        .frame(width: 260)
+    }
+    
+    private func setupInitialSelection() {
+        if selectedDataPoint == nil {
+            let barsWithData = chartData.filter { $0.count > 0 }
+            if let mostRecent = barsWithData.first {
+                selectedDataPoint = mostRecent
+            }
+        }
+    }
+    
+    private func setupInitialScroll() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            if let latestBar = chartData.first {
+                scrollPosition.scrollTo(id: latestBar.id, anchor: .trailing)
+            }
+        }
+    }
+    
+    private func handleChartTap(location: CGPoint, chartProxy: ChartProxy) {
+        // Convert tap location to chart coordinates
+        if let tappedDate: Date = chartProxy.value(atX: location.x) {
+            // Find the closest data point to the tapped location
+            let closestDataPoint = chartData.min { point1, point2 in
+                abs(point1.date.timeIntervalSince(tappedDate)) < abs(point2.date.timeIntervalSince(tappedDate))
+            }
+            
+            if let dataPoint = closestDataPoint {
+                selectedDataPoint = dataPoint
+            }
+        }
+    }
+    
+}
+
+struct RestartDetailCard: View {
+    let dataPoint: WatchDogRestartChart.ChartDataPoint?
+    let allMiners: [Miner]
+    let onDismiss: () -> Void
+    
+    private var minersForActions: [(miner: Miner?, action: WatchDogActionLog)] {
+        guard let dataPoint = dataPoint else { return [] }
+        return dataPoint.actionLogs.map { action in
+            let miner = allMiners.first { $0.macAddress == action.minerMacAddress }
+            return (miner: miner, action: action)
+        }
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let dataPoint = dataPoint {
+                        Text("Restarts at \(dataPoint.hour)")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Text("\(dataPoint.count) miners restarted")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Recent Restarts")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                        Text("No recent activity")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                Spacer()
+            }
+            
+            Divider()
+            
+            // Miner list or empty state
+            if minersForActions.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "shield.checkered")
+                        .font(.title2)
+                        .foregroundColor(.secondary)
+                    Text("No restart activity")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                    Text("WatchDog hasn't restarted any miners recently")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 100)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 6) {
+                        ForEach(minersForActions, id: \.action.id) { minerAction in
+                            HStack(spacing: 6) {
+                                Image(systemName: "cpu")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                                    .frame(width: 14)
+                                
+                                VStack(alignment: .leading, spacing: 1) {
+                                    if let miner = minerAction.miner {
+                                        Text(miner.hostName)
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .lineLimit(1)
+                                        Text(miner.ipAddress)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("Unknown Miner")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.secondary)
+                                        Text(minerAction.action.minerMacAddress.suffix(8))
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                // Exact time
+                                Text(formatExactTime(minerAction.action.timestamp))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .fontDesign(.monospaced)
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                            .cornerRadius(4)
+                        }
+                    }
+                }
+                .frame(maxHeight: 120)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 8, x: 0, y: 4)
+    }
+    
+    private func formatExactTime(_ timestamp: Int64) -> String {
+        let date = Date(timeIntervalSince1970: Double(timestamp) / 1000.0)
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+}
+
+extension DateFormatter {
+    static let shortTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "h a"
+        return formatter
+    }()
 }
 
 #Preview {
