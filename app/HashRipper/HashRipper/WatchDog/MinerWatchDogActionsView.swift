@@ -366,11 +366,12 @@ struct WatchDogRestartChart: View {
             let date = Date(timeIntervalSince1970: Double(actionLog.timestamp) / 1000.0)
             return calendar.dateInterval(of: .hour, for: date)?.start ?? date
         }
-        
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+
         // Convert to chart data points
-        let dataPoints = grouped.map { (hourStart, actions) in
-            let formatter = DateFormatter()
-            formatter.timeStyle = .short
+        var dataPoints = grouped.map { (hourStart, actions) in
+
             return ChartDataPoint(
                 date: hourStart,
                 count: actions.count,
@@ -379,6 +380,15 @@ struct WatchDogRestartChart: View {
             )
         }.sorted { $0.date < $1.date }
         
+        // add blank hour
+        let nextHour = dataPoints.last!.date.advanced(by: 60 * 60)
+        dataPoints.append(ChartDataPoint(
+            date: nextHour,
+            count: 0,
+            hour: formatter.string(from: nextHour),
+            actionLogs: []
+        ))
+
         // Only return actual data points, no filling in missing hours
         // This prevents too many empty bars from being shown
         if selectedDataPoint == nil {
@@ -473,8 +483,8 @@ struct WatchDogRestartChart: View {
                 AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(DateFormatter.shortTime.string(from: date))
-                            .font(.caption2)
-                            .rotationEffect(.degrees(90))
+                            .font(.system(size: 10))
+//                            .rotationEffect(.degrees(90))
                     }
                 }
             }
@@ -486,19 +496,19 @@ struct WatchDogRestartChart: View {
                 AxisValueLabel {
                     if let count = value.as(Int.self) {
                         Text("\(count)")
-                            .font(.caption2)
+                            .font(.system(size: 10))
                     }
                 }
             }
         }
-        .chartYScale(domain: 0...(chartData.map(\.count).max() ?? 1))
+        .chartYScale(domain: 0...(chartData.map(\.count).max() ?? 0) + 1)
         .chartGesture { chartProxy in
             SpatialTapGesture()
                 .onEnded { value in
                     handleChartTap(location: value.location, chartProxy: chartProxy)
                 }
         }
-        .frame(width: max(400, CGFloat(chartData.count * 28)))
+        .frame(width: CGFloat(chartData.count * 36))
         .frame(maxHeight: .infinity)
     }
     
@@ -525,7 +535,7 @@ struct WatchDogRestartChart: View {
     private func setupInitialScroll() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if let latestBar = chartData.first {
-                scrollPosition.scrollTo(id: latestBar.id, anchor: .trailing)
+                scrollPosition.scrollTo(id: latestBar.id, anchor: .bottom)
             }
         }
     }
@@ -670,7 +680,7 @@ struct RestartDetailCard: View {
 extension DateFormatter {
     static let shortTime: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
+        formatter.dateFormat = "h"
         return formatter
     }()
 }
