@@ -15,7 +15,7 @@ extension Notification.Name {
     static let minerUpdateInserted = Notification.Name("minerUpdateInserted")
 }
 
-let kMaxUpdateHistory = 1440 // one hour 5 second update interval 12 times per minue
+let kMaxUpdateHistory = 3000
 
 /// Individual miner refresh scheduler that handles one miner's refresh cycle
 actor MinerRefreshScheduler {

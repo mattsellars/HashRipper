@@ -168,6 +168,7 @@ struct MinerSegmentedUpdateChartsView: View {
                         )
                         .foregroundStyle(ChartSegments.asicTemperature.color)
                         .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: entry.isFailedUpdate ? [5, 5] : []))
 
                         // VR Temp line (red)
                         LineMark(
@@ -177,6 +178,7 @@ struct MinerSegmentedUpdateChartsView: View {
                         )
                         .foregroundStyle(ChartSegments.voltageRegulatorTemperature.color)
                         .interpolationMethod(.catmullRom)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: entry.isFailedUpdate ? [5, 5] : []))
                     } else {
                         // Default single-line chart
                         LineMark(
@@ -185,6 +187,7 @@ struct MinerSegmentedUpdateChartsView: View {
                         )
                         .interpolationMethod(.catmullRom)
                         .foregroundStyle(segment.color)
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: entry.isFailedUpdate ? [5, 5] : []))
                     }
                 }
             }
@@ -270,6 +273,7 @@ struct MinerSegmentedUpdateChartsView: View {
 
 struct ChartSegmentedDataEntry: Hashable {
     let time: Date
+    let isFailedUpdate: Bool
 
     // Index aligns with ChartSegments
     let values: [ChartSegmentValues]

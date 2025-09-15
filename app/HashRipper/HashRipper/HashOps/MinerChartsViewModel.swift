@@ -121,6 +121,7 @@ class MinerChartsViewModel: ObservableObject {
             let nextChartData = sortedUpdates.map { update in
                 ChartSegmentedDataEntry(
                     time: Date(milliseconds: update.timestamp),
+                    isFailedUpdate: update.isFailedUpdate,
                     values: [
                         ChartSegmentValues(primary: update.hashRate, secondary: nil),
                         ChartSegmentValues(primary: update.temp ?? 0, secondary: nil),

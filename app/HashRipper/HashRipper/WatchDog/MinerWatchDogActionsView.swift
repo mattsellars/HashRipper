@@ -330,6 +330,7 @@ struct WatchDogActionItemView: View {
 
 // MARK: - Restart Chart View
 
+private let kOneHourSeconds: TimeInterval = 3600
 struct WatchDogRestartChart: View {
     let actionLogs: [WatchDogActionLog]
     let allMiners: [Miner]
@@ -370,8 +371,7 @@ struct WatchDogRestartChart: View {
         formatter.timeStyle = .short
 
         // Convert to chart data points
-        var dataPoints = grouped.map { (hourStart, actions) in
-
+        var dataPoints: [ChartDataPoint] = grouped.map { (hourStart, actions) in
             return ChartDataPoint(
                 date: hourStart,
                 count: actions.count,
@@ -379,15 +379,22 @@ struct WatchDogRestartChart: View {
                 actionLogs: actions
             )
         }.sorted { $0.date < $1.date }
-        
-        // add blank hour
-        let nextHour = dataPoints.last!.date.advanced(by: 60 * 60)
-        dataPoints.append(ChartDataPoint(
-            date: nextHour,
-            count: 0,
-            hour: formatter.string(from: nextHour),
-            actionLogs: []
-        ))
+
+        // Fill in gaps between last action and current hour
+        if let lastDataPoint = dataPoints.last {
+            let currentHour = calendar.dateInterval(of: .hour, for: Date())?.start ?? Date()
+            var nextHour = calendar.date(byAdding: .hour, value: 1, to: lastDataPoint.date) ?? lastDataPoint.date.advanced(by: kOneHourSeconds)
+
+            while nextHour <= currentHour {
+                dataPoints.append(ChartDataPoint(
+                    date: nextHour,
+                    count: 0,
+                    hour: formatter.string(from: nextHour),
+                    actionLogs: []
+                ))
+                nextHour = calendar.date(byAdding: .hour, value: 1, to: nextHour) ?? nextHour.advanced(by: kOneHourSeconds)
+            }
+        }
 
         // Only return actual data points, no filling in missing hours
         // This prevents too many empty bars from being shown
@@ -461,20 +468,23 @@ struct WatchDogRestartChart: View {
         }
         .frame(maxWidth: .infinity)
     }
-    
+
+    private let selectedGradient = Gradient(colors: [Color.orange, Color.blue])
+    private let unselectedGradient = Gradient(colors: [Color.orange, Color.orange.opacity(0.6)])
+
+    private func gradient(isSelected: Bool) -> Gradient {
+        return isSelected ? selectedGradient : unselectedGradient
+    }
     private var chartView: some View {
         Chart(chartData, id: \.id) { point in
+            let isSelected = selectedDataPoint?.date == point.date
+            let barOpacity = point.count > 0 ? 1.0 : 0.3
             BarMark(
                 x: .value("Time", point.date),
                 y: .value("Restarts", point.count)
             )
-            .foregroundStyle(
-                selectedDataPoint?.date == point.date ?
-                Gradient(colors: [Color.blue, Color.orange]): Gradient(colors: [Color.orange.opacity(0.6)])
-
-//                Color.orange : Color.orange.opacity(0.6)
-            )
-            .opacity(point.count > 0 ? 1.0 : 0.3)
+            .foregroundStyle(gradient(isSelected: isSelected))
+            .opacity(barOpacity)
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: 1)) { value in
@@ -484,7 +494,6 @@ struct WatchDogRestartChart: View {
                     if let date = value.as(Date.self) {
                         Text(DateFormatter.shortTime.string(from: date))
                             .font(.system(size: 10))
-//                            .rotationEffect(.degrees(90))
                     }
                 }
             }
