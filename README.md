@@ -61,7 +61,7 @@ Step 3. Roll it out!
 ### Miner Watch Dog
 Allow watch dog to monitor your miners for indicators that it has stopped hashing or for some reason power usage dropped indicating an error. In these scenarios watch dog will issue a restart request to the miner to get it back up and hashing while you're not watching. Open the watch dog actions log to check what actions have happened while you were away. You can configure which miners are monitored by watch dog in settings.
 
-<img width="813" height="765" alt="Screenshot 2025-09-08 at 8 06 04 PM" src="https://github.com/user-attachments/assets/c4bf55df-338c-46bb-89a1-27b7e96f8faf" />
+<img width="837" height="764" alt="Screenshot 2025-09-14 at 7 59 55 PM" src="https://github.com/user-attachments/assets/dbfb5192-9218-4f17-ab2b-465a39fd1149" />
 
 
 ### HashRipper Settings
