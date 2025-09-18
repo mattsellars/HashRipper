@@ -156,9 +156,7 @@ struct MinerSegmentedUpdateChartsView: View {
             
             // Chart
             Chart {
-                ForEach(viewModel.chartData.indices, id: \.self) { i in
-                    let entry = viewModel.chartData[i]
-
+                ForEach(viewModel.chartDataBySegment[segment] ?? [], id: \.time) { entry in
                     if segment == .asicTemperature {
                         // ASIC Temp line (orange)
                         LineMark(
@@ -232,24 +230,74 @@ struct MinerSegmentedUpdateChartsView: View {
             Divider()
             
             // Content section
-            if viewModel.isLoading {
-                VStack {
-                    ProgressView("Loading chart data...")
-                        .progressViewStyle(CircularProgressViewStyle())
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Always show miner summary - not dependent on chart loading
                     if let currentMiner = currentMiner {
                         MinerHashOpsSummaryView(miner: currentMiner)
                     }
-                    LazyVStack(spacing: 32) {
-                        ForEach(chartsToShow, id: \.self) { segment in
-                            chartView(for: segment)
+
+                    // Show loading state only for initial load, pagination shows different indicator
+                    if viewModel.isLoading {
+                        VStack(spacing: 16) {
+                            ProgressView("Loading chart data...")
+                                .progressViewStyle(CircularProgressViewStyle())
+
+                            Text("Miner information shown above")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                    } else {
+                        // Data pagination controls
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text(viewModel.currentPageInfo)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+
+                                if viewModel.isPaginating {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                        .controlSize(.mini)
+                                }
+                            }
+
+                            HStack(spacing: 16) {
+                                Button(action: {
+                                    Task { await viewModel.goToOlderData() }
+                                }) {
+                                    Label("Older", systemImage: "chevron.left")
+                                }
+                                .disabled(!viewModel.canGoToOlderData || viewModel.isPaginating)
+
+                                Button("Most Recent") {
+                                    Task { await viewModel.goToMostRecentData() }
+                                }
+                                .disabled(!viewModel.canGoToNewerData || viewModel.isPaginating)
+
+                                Button(action: {
+                                    Task { await viewModel.goToNewerData() }
+                                }) {
+                                    Label("Newer", systemImage: "chevron.right")
+                                }
+                                .disabled(!viewModel.canGoToNewerData || viewModel.isPaginating)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
+
+                        // Charts section
+                        LazyVStack(spacing: 32) {
+                            ForEach(chartsToShow, id: \.self) { segment in
+                                chartView(for: segment)
+                            }
+                        }
+                        .padding(.vertical, 16)
                     }
-                    .padding(.vertical, 16)
                 }
             }
         }
