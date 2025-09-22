@@ -15,23 +15,40 @@ struct MinerHashOpsCompactTile: View {
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.firmwareReleaseViewModel) var firmwareViewModel: FirmwareReleasesViewModel
 
-    var miner: Miner
-    
+    var initialMiner: Miner
+
     @Query
     var latestUpdates: [MinerUpdate]
-    
+
+    @Query
+    var currentMiner: [Miner]
+
     init(miner: Miner) {
-        self.miner = miner
+        self.initialMiner = miner
         let macAddress = miner.macAddress
-        var descriptor = FetchDescriptor<MinerUpdate>(
+
+        // Query for latest updates
+        var updatesDescriptor = FetchDescriptor<MinerUpdate>(
             predicate: #Predicate<MinerUpdate> { update in
                 update.macAddress == macAddress
             },
             sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
         )
-        descriptor.fetchLimit = 1  // Only get the latest update
-        
-        self._latestUpdates = Query(descriptor, animation: .default)
+        updatesDescriptor.fetchLimit = 1  // Only get the latest update
+        self._latestUpdates = Query(updatesDescriptor, animation: .default)
+
+        // Query for current miner data (to get updated IP address)
+        var minerDescriptor = FetchDescriptor<Miner>(
+            predicate: #Predicate<Miner> { miner in
+                miner.macAddress == macAddress
+            }
+        )
+        minerDescriptor.fetchLimit = 1
+        self._currentMiner = Query(minerDescriptor, animation: .default)
+    }
+
+    var miner: Miner {
+        return currentMiner.first ?? initialMiner
     }
 
     @State

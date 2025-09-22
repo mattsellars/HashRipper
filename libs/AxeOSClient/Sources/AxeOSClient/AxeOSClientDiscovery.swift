@@ -119,7 +119,7 @@ func getMyIPAddress() -> [String] {
             // cellular = ["pdp_ip0","pdp_ip1","pdp_ip2","pdp_ip3"]
 
             let name = String(cString: interface.ifa_name)
-            if  name == "en0" || name == "en2" || name == "en3" || name == "en4" || name == "pdp_ip0" || name == "pdp_ip1" || name == "pdp_ip2" || name == "pdp_ip3" {
+//            if  name == "en0" || name == "en2" || name == "en3" || name == "en4" || name == "pdp_ip0" || name == "pdp_ip1" || name == "pdp_ip2" || name == "pdp_ip3" {
 
                 // Convert interface address to a human readable string:
                 var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
@@ -129,10 +129,10 @@ func getMyIPAddress() -> [String] {
                 let maybeAddress = String(cString: hostname)
                 if (maybeAddress.split(separator: ".").compactMap({ Int($0)} ).count == 4) {
                     addresses.append(maybeAddress)
-                    print("-> Network interface ip Address found: \(maybeAddress)")
+                    print("-> Network interface `\(name)` ip Address found: \(maybeAddress)")
                 }
 
-            }
+//            }
         }
     }
     freeifaddrs(ifaddr)
@@ -183,7 +183,7 @@ final public class AxeOSDevicesScanner: Sendable {
         var responses: [DiscoveredDevice] = []
 
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 5
+        config.timeoutIntervalForRequest = 10
         let session = URLSession(configuration: config)
         // issue scan requests concurrently
         await withTaskGroup(of: ScanEntry.self) { group in

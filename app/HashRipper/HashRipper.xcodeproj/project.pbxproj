@@ -34,9 +34,22 @@
 		C91EC6532DAF564C00432FA4 /* HashRipperUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HashRipperUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C9CB59FD2E80F8A000E0C924 /* Exceptions for "HashRipper" folder in "HashRipper" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C91EC6382DAF564B00432FA4 /* HashRipper */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C91EC63B2DAF564B00432FA4 /* HashRipper */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C9CB59FD2E80F8A000E0C924 /* Exceptions for "HashRipper" folder in "HashRipper" target */,
+			);
 			path = HashRipper;
 			sourceTree = "<group>";
 		};
@@ -419,6 +432,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HashRipper/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -445,6 +459,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = HashRipper/Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

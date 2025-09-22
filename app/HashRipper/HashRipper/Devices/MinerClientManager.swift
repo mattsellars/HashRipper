@@ -112,6 +112,10 @@ actor MinerRefreshScheduler {
 
 @Observable
 class MinerClientManager {
+    private let cleanupService: MinerUpdateCleanupService
+
+    // Shared reference for static access
+    private static var sharedCleanupService: MinerUpdateCleanupService?
 //    static let MAX_FAILURE_COUNT: Int = 5
     static var REFRESH_INTERVAL: TimeInterval { 
         AppSettings.shared.minerRefreshInterval 
@@ -155,10 +159,16 @@ class MinerClientManager {
         self.database = database
         self.firmwareReleaseViewModel = FirmwareReleasesViewModel(database: database)
         self.watchDog = MinerWatchDog(database: database)
-        
+        self.cleanupService = MinerUpdateCleanupService(database: database)
+
+        // Set shared reference for static access
+        MinerClientManager.sharedCleanupService = cleanupService
+
         Task { @MainActor in
             setupMinerSchedulers()
             setupAppLifecycleMonitoring()
+            // Start the cleanup service
+            await cleanupService.startCleanupService()
         }
     }
 
@@ -494,7 +504,7 @@ class MinerClientManager {
                             vrTemp: previous.vrTemp,
                             fanrpm: previous.fanrpm,
                             fanspeed: previous.fanspeed,
-                            hashRate: previous.hashRate,
+                            hashRate: 0,
                             power: previous.power,
                             isUsingFallbackStratum: previous.isUsingFallbackStratum,
                             timestamp: timestamp,
@@ -524,25 +534,18 @@ class MinerClientManager {
 
                     print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
                 }
-                // Clean up old updates if we have too many
-                let macAddress = miner.macAddress
-                let updateCountDescriptor = FetchDescriptor<MinerUpdate>(
-                    predicate: #Predicate<MinerUpdate> { update in
-                        update.macAddress == macAddress
-                    }
-                )
-                if let updateCount = try? context.fetchCount(updateCountDescriptor), updateCount > kMaxUpdateHistory {
-                    var oldUpdatesDescriptor = FetchDescriptor<MinerUpdate>(
+                // Trigger cleanup check if this miner might have exceeded threshold
+                let macAddress = miner.macAddress // Capture MAC address while in correct context
+                Task {
+                    // Check if this miner has exceeded our cleanup threshold
+                    let updateCountDescriptor = FetchDescriptor<MinerUpdate>(
                         predicate: #Predicate<MinerUpdate> { update in
                             update.macAddress == macAddress
-                        },
-                        sortBy: [SortDescriptor(\.timestamp, order: .forward)]
-                    )
-                    oldUpdatesDescriptor.fetchLimit = updateCount - kMaxUpdateHistory
-                    if let oldUpdates = try? context.fetch(oldUpdatesDescriptor) {
-                        for oldUpdate in oldUpdates {
-                            context.delete(oldUpdate)
                         }
+                    )
+                    if let updateCount = try? context.fetchCount(updateCountDescriptor), updateCount > kMaxUpdateHistory {
+                        // Trigger batched cleanup service
+                        await MinerClientManager.sharedCleanupService?.triggerCleanupCheck()
                     }
                 }
                 try context.save()

@@ -20,14 +20,33 @@ struct HashRipperApp: App {
             clientManager: minerClientManager,
             downloadsManager: firmwareDownloadsManager
         )
-        
+
         // Connect deployment manager to client manager for watchdog integration
         minerClientManager.setDeploymentManager(firmwareDeploymentManager)
-        
+
         // Connect NewMinerScanner to MinerClientManager
         newMinerScanner.onNewMinersDiscovered = { [weak minerClientManager] ipAddresses in
             Task { @MainActor in
                 minerClientManager?.handleNewlyDiscoveredMiners(ipAddresses)
+            }
+        }
+
+        // Clean up any MAC address duplicates on startup
+        Task {
+            do {
+                let database = SharedDatabase.shared.database
+                let duplicateCount = try await database.withModelContext { context in
+                    return try MinerMACDuplicateCleanup.countDuplicateMACs(context: context)
+                }
+
+                if duplicateCount > 0 {
+                    print("🔧 Found \(duplicateCount) duplicate miner records by MAC address - cleaning up...")
+                    try await database.withModelContext { context in
+                        try MinerMACDuplicateCleanup.cleanupDuplicateMACs(context: context)
+                    }
+                }
+            } catch {
+                print("❌ Failed to cleanup MAC duplicates: \(error)")
             }
         }
     }

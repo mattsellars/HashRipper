@@ -88,14 +88,65 @@ class NewMinerScanner {
                     devices.forEach { device in
                         let ipAddress = device.client.deviceIpAddress
                         let info = device.info
-                        let miner = Miner(
-                            hostName: device.info.hostname,
-                            ipAddress: ipAddress,
-                            ASICModel: info.ASICModel,
-                            boardVersion: info.boardVersion,
-                            deviceModel: info.deviceModel,
-                            macAddress: info.macAddr
+
+                        // Check if we already have this IP address
+                        let existingIPDescriptor = FetchDescriptor<Miner>(
+                            predicate: #Predicate<Miner> { miner in
+                                miner.ipAddress == ipAddress
+                            }
                         )
+
+                        let existingIPMiners = (try? modelContext.fetch(existingIPDescriptor)) ?? []
+                        let existingIPMiner = existingIPMiners.first
+
+                        // Check if we have a miner with this MAC address (possibly with different IP)
+                        let existingMACDescriptor = FetchDescriptor<Miner>(
+                            predicate: #Predicate<Miner> { miner in
+                                miner.macAddress == info.macAddr
+                            }
+                        )
+
+                        let existingMACMiners = (try? modelContext.fetch(existingMACDescriptor)) ?? []
+                        let existingMACMiner = existingMACMiners.first
+
+                        let miner: Miner
+                        if let existing = existingIPMiner {
+                            // IP already exists, update with current info
+                            existing.hostName = info.hostname
+                            existing.ASICModel = info.ASICModel
+                            existing.boardVersion = info.boardVersion
+                            existing.deviceModel = info.deviceModel
+                            existing.macAddress = info.macAddr
+                            miner = existing
+                            print("Updated miner at existing IP \(ipAddress): \(miner.hostName)")
+                        } else if let existing = existingMACMiner {
+                            // MAC exists but IP is different - this miner changed IP
+                            // Delete the old record and create new one (due to IP being unique)
+                            modelContext.delete(existing)
+                            miner = Miner(
+                                hostName: info.hostname,
+                                ipAddress: ipAddress,
+                                ASICModel: info.ASICModel,
+                                boardVersion: info.boardVersion,
+                                deviceModel: info.deviceModel,
+                                macAddress: info.macAddr
+                            )
+                            modelContext.insert(miner)
+                            print("Miner \(info.hostname) changed IP from \(existing.ipAddress) to \(ipAddress)")
+                        } else {
+                            // Completely new miner
+                            miner = Miner(
+                                hostName: device.info.hostname,
+                                ipAddress: ipAddress,
+                                ASICModel: info.ASICModel,
+                                boardVersion: info.boardVersion,
+                                deviceModel: info.deviceModel,
+                                macAddress: info.macAddr
+                            )
+                            modelContext.insert(miner)
+                            print("Created new miner: \(miner.hostName)")
+                        }
+
                         let minerUpdate = MinerUpdate(
                             miner: miner,
                             hostname: info.hostname,
@@ -119,7 +170,6 @@ class NewMinerScanner {
                             isUsingFallbackStratum: info.isUsingFallbackStratum
                         )
 
-                        modelContext.insert(miner)
                         modelContext.insert(minerUpdate)
                     }
 
@@ -178,23 +228,74 @@ class NewMinerScanner {
                     foundDeviceCount += 1
                     let ipAddress = device.client.deviceIpAddress
                     print("Found device \(foundDeviceCount): \(device.info.hostname) at \(ipAddress)")
-                    
-                    // Track this new IP address
-                    newMinerIpAddresses.append(ipAddress)
-                    
+
                     // Process each device immediately as it's found
                     Task {
                         await database.withModelContext({ modelContext in
                             let ipAddress = device.client.deviceIpAddress
                             let info = device.info
-                            let miner = Miner(
-                                hostName: device.info.hostname,
-                                ipAddress: ipAddress,
-                                ASICModel: info.ASICModel,
-                                boardVersion: info.boardVersion,
-                                deviceModel: info.deviceModel,
-                                macAddress: info.macAddr
+
+                            // Check if we already have this IP address
+                            let existingIPDescriptor = FetchDescriptor<Miner>(
+                                predicate: #Predicate<Miner> { miner in
+                                    miner.ipAddress == ipAddress
+                                }
                             )
+
+                            let existingIPMiners = try? modelContext.fetch(existingIPDescriptor)
+                            let existingIPMiner = existingIPMiners?.first
+
+                            // Check if we have a miner with this MAC address (possibly with different IP)
+                            let existingMACDescriptor = FetchDescriptor<Miner>(
+                                predicate: #Predicate<Miner> { miner in
+                                    miner.macAddress == info.macAddr
+                                }
+                            )
+
+                            let existingMACMiners = try? modelContext.fetch(existingMACDescriptor)
+                            let existingMACMiner = existingMACMiners?.first
+
+                            let miner: Miner
+                            if let existing = existingIPMiner {
+                                // IP already exists, update with current info
+                                existing.hostName = info.hostname
+                                existing.ASICModel = info.ASICModel
+                                existing.boardVersion = info.boardVersion
+                                existing.deviceModel = info.deviceModel
+                                existing.macAddress = info.macAddr
+                                miner = existing
+                                print("Updated miner at existing IP \(ipAddress): \(miner.hostName)")
+                            } else if let existing = existingMACMiner {
+                                // MAC exists but IP is different - this miner changed IP
+                                // Delete the old record and create new one (due to IP being unique)
+                                modelContext.delete(existing)
+                                miner = Miner(
+                                    hostName: info.hostname,
+                                    ipAddress: ipAddress,
+                                    ASICModel: info.ASICModel,
+                                    boardVersion: info.boardVersion,
+                                    deviceModel: info.deviceModel,
+                                    macAddress: info.macAddr
+                                )
+                                modelContext.insert(miner)
+                                print("Miner \(info.hostname) changed IP from \(existing.ipAddress) to \(ipAddress)")
+                            } else {
+                                // Completely new miner
+                                miner = Miner(
+                                    hostName: device.info.hostname,
+                                    ipAddress: ipAddress,
+                                    ASICModel: info.ASICModel,
+                                    boardVersion: info.boardVersion,
+                                    deviceModel: info.deviceModel,
+                                    macAddress: info.macAddr
+                                )
+                                modelContext.insert(miner)
+
+                                // Track this new IP address for callback
+                                newMinerIpAddresses.append(ipAddress)
+                                print("Created new miner: \(miner.hostName)")
+                            }
+
                             let minerUpdate = MinerUpdate(
                                 miner: miner,
                                 hostname: info.hostname,
@@ -219,14 +320,13 @@ class NewMinerScanner {
                                 isUsingFallbackStratum: info.isUsingFallbackStratum
                             )
 
-                            modelContext.insert(miner)
                             modelContext.insert(minerUpdate)
-                            
+
                             do {
                                 try modelContext.save()
-                                print("Successfully saved new miner: \(miner.hostName)")
+                                print("Successfully saved miner data: \(miner.hostName)")
                             } catch(let error) {
-                                print("Failed to insert miner data for \(miner.hostName): \(String(describing: error))")
+                                print("Failed to save miner data for \(miner.hostName): \(String(describing: error))")
                             }
                         })
                     }
