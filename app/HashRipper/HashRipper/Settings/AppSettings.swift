@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import AxeOSClient
 
 @Observable
 class AppSettings {
@@ -15,7 +16,48 @@ class AppSettings {
     private let userDefaults = UserDefaults.standard
     
     // MARK: - General Settings
-    
+
+    @ObservationIgnored
+    private let customSubnetsKey = "customSubnets"
+    var customSubnets: [String] {
+        get {
+            return userDefaults.stringArray(forKey: customSubnetsKey) ?? []
+        }
+        set {
+            userDefaults.set(newValue, forKey: customSubnetsKey)
+        }
+    }
+
+    @ObservationIgnored
+    private let useAutoDetectedSubnetsKey = "useAutoDetectedSubnets"
+    var useAutoDetectedSubnets: Bool {
+        get {
+            // Default to true if not set
+            if userDefaults.object(forKey: useAutoDetectedSubnetsKey) == nil {
+                return true
+            }
+            return userDefaults.bool(forKey: useAutoDetectedSubnetsKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: useAutoDetectedSubnetsKey)
+        }
+    }
+
+    @ObservationIgnored
+    private let includePreReleasesKey = "includePreReleases"
+    var includePreReleases: Bool {
+        get {
+            // Default to false if not set
+            if userDefaults.object(forKey: includePreReleasesKey) == nil {
+                return false
+            }
+            return userDefaults.bool(forKey: includePreReleasesKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: includePreReleasesKey)
+        }
+    }
+
     @ObservationIgnored
     private let refreshIntervalKey = "minerRefreshInterval"
     var minerRefreshInterval: TimeInterval {
@@ -90,7 +132,43 @@ class AppSettings {
     func disableWatchdogForAllMiners() {
         watchdogEnabledMiners.removeAll()
     }
-    
+
+    // MARK: - Subnet Helpers
+
+    func addCustomSubnet(_ subnet: String) {
+        var subnets = customSubnets
+        if !subnets.contains(subnet) {
+            subnets.append(subnet)
+            customSubnets = subnets
+        }
+    }
+
+    func removeCustomSubnet(_ subnet: String) {
+        customSubnets = customSubnets.filter { $0 != subnet }
+    }
+
+    func getSubnetsToScan() -> [String] {
+        var subnets: [String] = []
+
+        // Add custom subnets if any are configured
+        if !customSubnets.isEmpty {
+            subnets.append(contentsOf: customSubnets)
+        }
+
+        // Add auto-detected subnets if enabled
+        if useAutoDetectedSubnets {
+            let autoDetectedIPs = getMyIPAddress()
+            subnets.append(contentsOf: autoDetectedIPs)
+        }
+
+        // If no subnets configured, fall back to auto-detection
+        if subnets.isEmpty {
+            subnets = getMyIPAddress()
+        }
+
+        return Array(Set(subnets)) // Remove duplicates
+    }
+
     private init() {
         // Private initializer for singleton
     }

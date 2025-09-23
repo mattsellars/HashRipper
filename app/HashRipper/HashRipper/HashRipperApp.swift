@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Network
 
 @main
 struct HashRipperApp: App {
@@ -16,6 +17,7 @@ struct HashRipperApp: App {
     var firmwareDeploymentManager: FirmwareDeploymentManager
     
     init() {
+        nw_tls_create_options()
         firmwareDeploymentManager = FirmwareDeploymentManager(
             clientManager: minerClientManager,
             downloadsManager: firmwareDownloadsManager
@@ -52,13 +54,37 @@ struct HashRipperApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(content: {
             MainContentView()
                 .onAppear {
                     // Turn off this terrible design choice https://stackoverflow.com/questions/65460457/how-do-i-disable-the-show-tab-bar-menu-option-in-swiftui
                     let _ = NSApplication.shared.windows.map { $0.tabbingMode = .disallowed }
-                    
+
+                    // Trigger local network permission check immediately
+                    Task {
+                        await triggerLocalNetworkPermission()
+                    }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    print("📱 App became active - resuming operations")
+                    newMinerScanner.resumeScanning()
+                    minerClientManager.resumeAllRefresh()
+                    minerClientManager.setBackgroundMode(false)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+                    print("📱 App resigned active - gracefully pausing operations")
+                    newMinerScanner.pauseScanning()
+                    minerClientManager.setBackgroundMode(true)
+                    // Don't pause refresh completely - just slow it down for background
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    print("📱 App terminating - stopping all operations")
+                    newMinerScanner.stopScanning()
+                    minerClientManager.pauseAllRefresh()
+                }
+        })
+        .commands {
+            SettingsCommands()
         }
         .windowToolbarStyle(.unified)
         .modelContainer(SharedDatabase.shared.modelContainer)
@@ -118,6 +144,24 @@ struct HashRipperApp: App {
         .database(SharedDatabase.shared.database)
         .defaultSize(width: 500, height: 400)
         .windowResizability(.contentSize)
-        
+
+    }
+
+    // Function to trigger local network permission dialog
+    private func triggerLocalNetworkPermission() async {
+        do {
+            // Make a simple request to trigger the permission dialog
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 2
+            config.waitsForConnectivity = false
+            let session = URLSession(configuration: config)
+
+            let url = URL(string: "http://192.168.1.1")!
+            let request = URLRequest(url: url)
+
+            _ = try await session.data(for: request)
+        } catch {
+            print("⚠️ Local network permission trigger completed (expected to fail): \(error)")
+        }
     }
 }

@@ -97,7 +97,7 @@ public struct DiscoveredAxeOSDevice {
 //    }
 //}
 
-func getMyIPAddress() -> [String] {
+public func getMyIPAddress() -> [String] {
     var addresses : [String] = []
 
     // Get list of all interfaces on the local machine:
@@ -168,15 +168,24 @@ final public class AxeOSDevicesScanner: Sendable {
 
     private init(){}
 
-    public func executeSwarmScan(knownMinerIps: [String] = []) async throws -> [DiscoveredDevice] {
-        let myIpAddresses = getMyIPAddress()
-        guard myIpAddresses.isEmpty == false else {
-            throw AxeOSScanError.localIPAddressNotFound
+    public func executeSwarmScan(knownMinerIps: [String] = [], customSubnetIPs: [String] = []) async throws -> [DiscoveredDevice] {
+        var subnetsToScan: [String] = []
+
+        // Use custom subnet IPs if provided
+        if !customSubnetIPs.isEmpty {
+            subnetsToScan = customSubnetIPs
+        } else {
+            // Fall back to auto-detected IPs
+            let myIpAddresses = getMyIPAddress()
+            guard myIpAddresses.isEmpty == false else {
+                throw AxeOSScanError.localIPAddressNotFound
+            }
+            subnetsToScan = myIpAddresses
         }
 
         var ipaddressesToCheck: [String] = []
-        for myIpAddress in myIpAddresses {
-            let ipaddresses = generator.calculateIpRange(ip: myIpAddress)?.filter { $0 != myIpAddress && !knownMinerIps.contains($0) } ?? []
+        for subnetIP in subnetsToScan {
+            let ipaddresses = generator.calculateIpRange(ip: subnetIP)?.filter { $0 != subnetIP && !knownMinerIps.contains($0) } ?? []
             ipaddressesToCheck.append(contentsOf: ipaddresses)
         }
 
@@ -215,16 +224,26 @@ final public class AxeOSDevicesScanner: Sendable {
     /// - Throws: AxeOSScanError if local IP address cannot be determined
     public func executeSwarmScanV2(
         knownMinerIps: [String] = [],
+        customSubnetIPs: [String] = [],
         onDeviceFound: @Sendable @escaping (DiscoveredDevice) -> Void
     ) async throws {
-        let myIpAddresses = getMyIPAddress()
-        guard myIpAddresses.isEmpty == false else {
-            throw AxeOSScanError.localIPAddressNotFound
+        var subnetsToScan: [String] = []
+
+        // Use custom subnet IPs if provided
+        if !customSubnetIPs.isEmpty {
+            subnetsToScan = customSubnetIPs
+        } else {
+            // Fall back to auto-detected IPs
+            let myIpAddresses = getMyIPAddress()
+            guard myIpAddresses.isEmpty == false else {
+                throw AxeOSScanError.localIPAddressNotFound
+            }
+            subnetsToScan = myIpAddresses
         }
 
         var ipaddressesToCheck: [String] = []
-        for myIpAddress in myIpAddresses {
-            let ipaddresses = generator.calculateIpRange(ip: myIpAddress)?.filter { $0 != myIpAddress && !knownMinerIps.contains($0) } ?? []
+        for subnetIP in subnetsToScan {
+            let ipaddresses = generator.calculateIpRange(ip: subnetIP)?.filter { $0 != subnetIP && !knownMinerIps.contains($0) } ?? []
             ipaddressesToCheck.append(contentsOf: ipaddresses)
         }
 

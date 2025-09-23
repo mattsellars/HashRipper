@@ -26,6 +26,7 @@ actor MinerRefreshScheduler {
     private var refreshTask: Task<Void, Never>?
     private var isPaused: Bool = false
     private var isBackgroundMode: Bool = false
+    private var shouldStopAfterCurrentUpdate: Bool = false
     
     init(ipAddress: IPAddress, database: Database, watchDog: MinerWatchDog, clientManager: MinerClientManager) {
         self.ipAddress = ipAddress
@@ -44,25 +45,32 @@ actor MinerRefreshScheduler {
     
     func pause() {
         isPaused = true
-        refreshTask?.cancel()
-        refreshTask = nil
+        shouldStopAfterCurrentUpdate = true
+        // Don't cancel the task immediately - let current update finish
+        print("🔄 Gracefully pausing miner refresh for \(ipAddress) - will stop after current update")
     }
     
     func resume() {
         guard isPaused else { return }
         isPaused = false
-        startRefreshing()
+        shouldStopAfterCurrentUpdate = false
+        print("▶️ Resuming miner refresh for \(ipAddress)")
+
+        // Start refreshing if no task is running
+        if refreshTask == nil {
+            startRefreshing()
+        }
     }
     
     func setBackgroundMode(_ isBackground: Bool) {
         let wasBackgroundMode = isBackgroundMode
         isBackgroundMode = isBackground
-        
-        // If mode changed and we're actively refreshing, restart with new interval
+
+        // If mode changed and we're actively refreshing, gracefully transition
         if wasBackgroundMode != isBackground && refreshTask != nil && !isPaused {
-            refreshTask?.cancel()
-            refreshTask = nil
-            startRefreshing()
+            print("🔄 Background mode changed for \(ipAddress): \(isBackground ? "background" : "foreground")")
+            // Don't cancel immediately - just let the refresh loop adapt to new timing
+            // The loop will check isBackgroundMode and adjust intervals accordingly
         }
     }
     
@@ -74,33 +82,48 @@ actor MinerRefreshScheduler {
     
     private func refreshLoop() async {
         while !isPaused && !Task.isCancelled {
+            // Check if we should stop gracefully after current update
+            if shouldStopAfterCurrentUpdate {
+                print("🛑 Gracefully stopping refresh loop for \(ipAddress)")
+                refreshTask = nil
+                return
+            }
+
             // Get client for this miner
             guard let client = await clientManager.client(forIpAddress: ipAddress) else {
                 // If no client, wait and try again
-                try? await Task.sleep(nanoseconds: UInt64(MinerClientManager.REFRESH_INTERVAL * 1_000_000_000))
+                let interval = isBackgroundMode ? MinerClientManager.REFRESH_INTERVAL * 2 : MinerClientManager.REFRESH_INTERVAL
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 continue
             }
-            
+
             // Skip if there's already a pending request for this IP
             let shouldSkip = MinerClientManager.pendingRefreshLock.perform(guardedTask: {
                 return MinerClientManager.pendingRefreshIPs.contains(ipAddress)
             })
-            
+
             if !shouldSkip {
                 // Mark as pending
                 MinerClientManager.pendingRefreshLock.perform(guardedTask: {
                     MinerClientManager.pendingRefreshIPs.insert(ipAddress)
                 })
-                
-                // Perform the refresh
+
+                // Perform the refresh - this is protected from cancellation
                 let update = await client.getSystemInfo()
                 let clientUpdate = ClientUpdate(ipAddress: ipAddress, response: update)
                 await MinerClientManager.processClientUpdate(clientUpdate, database: database, watchDog: watchDog)
-                
+
                 // Remove from pending
                 MinerClientManager.pendingRefreshLock.perform(guardedTask: {
                     MinerClientManager.pendingRefreshIPs.remove(ipAddress)
                 })
+
+                // Check again if we should stop after this update completed
+                if shouldStopAfterCurrentUpdate {
+                    print("🛑 Gracefully stopping refresh loop for \(ipAddress) after update completion")
+                    refreshTask = nil
+                    return
+                }
             }
             
             // Wait for next refresh interval (longer when backgrounded to save CPU)
@@ -238,13 +261,13 @@ class MinerClientManager {
 
     func setBackgroundMode(_ isBackground: Bool) {
         schedulerLock.perform(guardedTask: {
-            let schedulers = Array(minerSchedulers.values)
-            Task {
-                for scheduler in schedulers {
+            for scheduler in minerSchedulers.values {
+                Task {
                     await scheduler.setBackgroundMode(isBackground)
                 }
             }
         })
+        print("📱 Background mode set to: \(isBackground)")
     }
     
     @MainActor
@@ -300,6 +323,10 @@ class MinerClientManager {
                 let sessionConfig = URLSessionConfiguration.default
                 sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL
                 sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
+                sessionConfig.waitsForConnectivity = false
+//                sessionConfig.allowsCellularAccess = false
+//                sessionConfig.allowsExpensiveNetworkAccess = false
+//                sessionConfig.allowsConstrainedNetworkAccess = false
                 let session = URLSession(configuration: sessionConfig)
 
                 for ipAddress in newMinerIps {
@@ -343,6 +370,10 @@ class MinerClientManager {
             let sessionConfig = URLSessionConfiguration.default
             sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL * 2
             sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
+            sessionConfig.waitsForConnectivity = false
+//            sessionConfig.allowsCellularAccess = false
+//            sessionConfig.allowsExpensiveNetworkAccess = false
+//            sessionConfig.allowsConstrainedNetworkAccess = false
             let session = URLSession(configuration: sessionConfig)
 
             for ipAddress in ipAddresses {
@@ -571,6 +602,33 @@ class MinerClientManager {
             )
         }
     }
+
+    // MARK: - Background Mode Handling
+
+    /// Pauses all miner refresh operations gracefully (lets ongoing updates complete)
+    func pauseAllRefresh() {
+        schedulerLock.perform(guardedTask: {
+            for scheduler in minerSchedulers.values {
+                Task {
+                    await scheduler.pause()
+                }
+            }
+        })
+        print("📱 All miner refreshes paused gracefully")
+    }
+
+    /// Resumes all miner refresh operations
+    func resumeAllRefresh() {
+        schedulerLock.perform(guardedTask: {
+            for scheduler in minerSchedulers.values {
+                Task {
+                    await scheduler.resume()
+                }
+            }
+        })
+        print("📱 All miner refreshes resumed")
+    }
+
 }
 
 struct ClientUpdate {

@@ -18,6 +18,11 @@ struct SettingsWindow: View {
                         Label("General", systemImage: "gearshape")
                     }
 
+                NetworkSettingsView()
+                    .tabItem {
+                        Label("Network", systemImage: "network")
+                    }
+
                 WatchDogSettingsView()
                     .tabItem {
                         Label("WatchDog", systemImage: "shield.checkered")

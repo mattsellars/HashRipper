@@ -13,20 +13,25 @@ typealias DeviceModel = String
 @Observable
 final class FirmwareReleasesViewModel: Sendable {
     let database: any Database
+    private let appSettings = AppSettings.shared
 
     var isLoading: Bool = false
-    
     var showPreReleases: Bool = false
 
     var includePreReleases: Binding<Bool> {
             Binding(
                 get: { self.showPreReleases },
-                set: { self.showPreReleases = $0 }
+                set: {
+                    self.showPreReleases = $0
+                    self.appSettings.includePreReleases = $0
+                }
             )
         }
 
     init(database: any Database) {
         self.database = database
+        // Initialize from saved settings
+        self.showPreReleases = appSettings.includePreReleases
     }
 
     private var modelsByGenre: [MinerDeviceGenre : Int] = [:]
@@ -116,10 +121,10 @@ final class FirmwareReleasesViewModel: Sendable {
             return "NerdQAxe+"
         case .NerdQAxePlusPlus:
             return "NerdQAxe++"
-        case .NerdHaxe:
-            return "NerdHaxe-γ"
         case .NerdOCTAXE:
             return "NerdOCTAXE-γ"
+        case .NerdQX:
+            return "NerdQX"
         default:
             return nil
         }

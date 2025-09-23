@@ -2,9 +2,19 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleIdentifier</key>
+	<string>com.sellars.hashripper.HashRipper</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>HashRipper needs access to your local network to discover and manage Bitcoin mining devices on your network.</string>
+	<key>NSAllowsLocalNetworkingUsageDescription</key>
+	<string>HashRipper needs access to your local network to discover and manage Bitcoin mining devices on your network.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionMinimumTLSVersion</key>
+		<string>TLSv1.2</string>
+		<key>NSExceptionAllowsInsecureHTTPLoads</key>
 		<true/>
 	</dict>
 </dict>

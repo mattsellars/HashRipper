@@ -14,6 +14,10 @@ struct MinerProfileTileView: View {
     @State var showDuplicateProfileForm: Bool = false
     @State var showNewProfileSavedAlert: Bool = false
     @State private var showEditProfileSheet: Bool = false
+    @State private var showShareSheet: Bool = false
+    @State private var exportedProfileData: Data?
+    @State private var shareAlertMessage = ""
+    @State private var showShareAlert = false
 
     var minerProfile: MinerProfileTemplate
     var showOptionalActions: Bool
@@ -94,10 +98,10 @@ struct MinerProfileTileView: View {
                         .help(Text("Deploy this profile to miners"))
                     }
                     Spacer()
-                    Button(action: {}, label: { Image(systemName: "square.and.arrow.up") })
+                    Button(action: shareProfile, label: { Image(systemName: "square.and.arrow.up") })
                         .help(Text("Share this profile"))
                     Button(action: showEditProfileFormSheet, label: { Image(systemName: "pencil") })
-                        .help(Text("Share this profile"))
+                        .help(Text("Edit this profile"))
                     Button(action: showDuplicateProfileFormSheet, label: { Image(systemName: "square.on.square") })
                         .help(Text("Duplicate this profile"))
                     Button(action: showDeleteConfirmPrompt, label: { Image(systemName: "trash") })
@@ -124,6 +128,28 @@ struct MinerProfileTileView: View {
         }
         .alert("New profile saved", isPresented: $showNewProfileSavedAlert) {
             Button("OK") {}
+        }
+        .alert("Profile Export", isPresented: $showShareAlert) {
+            Button("OK") {}
+        } message: {
+            Text(shareAlertMessage)
+        }
+        .fileExporter(
+            isPresented: $showShareSheet,
+            document: JSONDocument(data: exportedProfileData ?? Data()),
+            contentType: .json,
+            defaultFilename: "profile-\(minerProfile.name.replacingOccurrences(of: " ", with: "-").lowercased())"
+        ) { result in
+            switch result {
+            case .success(let url):
+                print("✅ Profile exported to: \(url)")
+                shareAlertMessage = "Profile '\(minerProfile.name)' exported successfully!"
+                showShareAlert = true
+            case .failure(let error):
+                print("❌ Export failed: \(error)")
+                shareAlertMessage = "Export failed: \(error.localizedDescription)"
+                showShareAlert = true
+            }
         }
         .sheet(isPresented: $showDuplicateProfileForm) {
             MinerProfileTemplateFormView(
@@ -186,5 +212,18 @@ struct MinerProfileTileView: View {
 
     func showEditProfileFormSheet() {
         showEditProfileSheet = true
+    }
+
+    func shareProfile() {
+        do {
+            let data = try ProfileJSONExporter.exportSingleProfile(minerProfile)
+            exportedProfileData = data
+            showShareSheet = true
+            print("✅ Prepared profile '\(minerProfile.name)' for export")
+        } catch {
+            print("❌ Failed to export profile: \(error)")
+            shareAlertMessage = "Failed to export profile: \(error.localizedDescription)"
+            showShareAlert = true
+        }
     }
 }

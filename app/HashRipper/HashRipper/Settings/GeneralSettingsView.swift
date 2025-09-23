@@ -84,9 +84,9 @@ struct GeneralSettingsView: View {
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
                     Divider()
-                    
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Performance Tips")
                             .font(.headline)

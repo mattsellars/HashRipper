@@ -16,13 +16,17 @@ typealias IPAddress = String
 class NewMinerScanner {
     let database: Database
     var rescanInterval: TimeInterval = 300 // 5 min
-    
+
     // Callback for when new miners are discovered
     var onNewMinersDiscovered: (([IPAddress]) -> Void)?
 
     let connectedDeviceUrlSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 90
+        config.waitsForConnectivity = false
+        config.allowsCellularAccess = false
+        config.allowsExpensiveNetworkAccess = false
+        config.allowsConstrainedNetworkAccess = false
         return URLSession(configuration: config)
     }()
 
@@ -31,6 +35,7 @@ class NewMinerScanner {
     private let lastUpdateLock = UnfairLock()
     private var lastUpdate: Date?
     private(set) var isScanning: Bool = false
+    private var isPaused: Bool = false
 
     init(database: Database) {
         self.database = database
@@ -39,7 +44,7 @@ class NewMinerScanner {
     func initializeDeviceScanner() {
         rescanTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true, block: { [self] _ in
             lastUpdateLock.perform(guardedTask: {
-                guard !self.isScanning && self.lastUpdate == nil || Date().timeIntervalSince(self.lastUpdate!) >= self.rescanInterval else { return }
+                guard !self.isPaused && !self.isScanning && (self.lastUpdate == nil || Date().timeIntervalSince(self.lastUpdate!) >= self.rescanInterval) else { return }
                 Task {
                     await self.rescanDevicesStreaming()
                 }
@@ -49,10 +54,31 @@ class NewMinerScanner {
         })
     }
 
+    func pauseScanning() {
+        isPaused = true
+        print("📱 Miner scanning paused (app backgrounded) - ongoing scans will complete")
+    }
+
+    func resumeScanning() {
+        isPaused = false
+        print("📱 Miner scanning resumed (app foregrounded)")
+    }
+
+    func stopScanning() {
+        isPaused = true
+        rescanTimer?.invalidate()
+        rescanTimer = nil
+        print("📱 Miner scanning stopped")
+    }
+
     func scanForNewMiner() async -> Result<NewDevice, Error>  {
         // new miner should only be at 192.168.4.1
         var sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = 10
+        sessionConfig.waitsForConnectivity = false
+        sessionConfig.allowsCellularAccess = false
+        sessionConfig.allowsExpensiveNetworkAccess = false
+        sessionConfig.allowsConstrainedNetworkAccess = false
         let session = URLSession(configuration: sessionConfig)
         let client = AxeOSClient(deviceIpAddress: "192.168.4.1", urlSession: session)
         let response = await client.getSystemInfo()
@@ -74,8 +100,11 @@ class NewMinerScanner {
                 let knownMiners: [Miner] = try await database.withModelContext({ modelContext in
                     return try modelContext.fetch(FetchDescriptor())
                 })
+                let customSubnetIPs = AppSettings.shared.getSubnetsToScan()
+                print("🔍 Scanning subnets: \(customSubnetIPs)")
                 let devices = try await AxeOSDevicesScanner.shared.executeSwarmScan(
-                    knownMinerIps: knownMiners.map((\.ipAddress))
+                    knownMinerIps: knownMiners.map((\.ipAddress)),
+                    customSubnetIPs: customSubnetIPs
                 )
 
                 guard devices.count > 0 else {
@@ -84,30 +113,19 @@ class NewMinerScanner {
                 }
 
                 print("Swarm scanning - model context created")
+
+                // Pre-fetch all miners once for efficient lookups
+                let minersByIP = Dictionary(uniqueKeysWithValues: knownMiners.map { ($0.ipAddress, $0) })
+                let minersByMAC = Dictionary(uniqueKeysWithValues: knownMiners.map { ($0.macAddress, $0) })
+
                 await database.withModelContext({ modelContext in
                     devices.forEach { device in
                         let ipAddress = device.client.deviceIpAddress
                         let info = device.info
 
-                        // Check if we already have this IP address
-                        let existingIPDescriptor = FetchDescriptor<Miner>(
-                            predicate: #Predicate<Miner> { miner in
-                                miner.ipAddress == ipAddress
-                            }
-                        )
-
-                        let existingIPMiners = (try? modelContext.fetch(existingIPDescriptor)) ?? []
-                        let existingIPMiner = existingIPMiners.first
-
-                        // Check if we have a miner with this MAC address (possibly with different IP)
-                        let existingMACDescriptor = FetchDescriptor<Miner>(
-                            predicate: #Predicate<Miner> { miner in
-                                miner.macAddress == info.macAddr
-                            }
-                        )
-
-                        let existingMACMiners = (try? modelContext.fetch(existingMACDescriptor)) ?? []
-                        let existingMACMiner = existingMACMiners.first
+                        // Use pre-fetched miners for efficient lookups
+                        let existingIPMiner = minersByIP[ipAddress]
+                        let existingMACMiner = minersByMAC[info.macAddr]
 
                         let miner: Miner
                         if let existing = existingIPMiner {
@@ -222,38 +240,31 @@ class NewMinerScanner {
                 var foundDeviceCount = 0
                 var newMinerIpAddresses: [IPAddress] = []
                 
+                // Pre-fetch all miners once for efficient lookups
+                let allMiners = knownMiners
+                let minersByIP = Dictionary(uniqueKeysWithValues: allMiners.map { ($0.ipAddress, $0) })
+                let minersByMAC = Dictionary(uniqueKeysWithValues: allMiners.map { ($0.macAddress, $0) })
+
+                let customSubnetIPs = AppSettings.shared.getSubnetsToScan()
+                print("🔍 Streaming scan using subnets: \(customSubnetIPs)")
                 try await AxeOSDevicesScanner.shared.executeSwarmScanV2(
-                    knownMinerIps: knownMiners.map((\.ipAddress))
+                    knownMinerIps: knownMiners.map((\.ipAddress)),
+                    customSubnetIPs: customSubnetIPs
                 ) { device in
                     foundDeviceCount += 1
                     let ipAddress = device.client.deviceIpAddress
                     print("Found device \(foundDeviceCount): \(device.info.hostname) at \(ipAddress)")
 
                     // Process each device immediately as it's found
-                    Task {
+                    // Use Task.detached to prevent cancellation during app lifecycle transitions
+                    Task.detached {
                         await database.withModelContext({ modelContext in
                             let ipAddress = device.client.deviceIpAddress
                             let info = device.info
 
-                            // Check if we already have this IP address
-                            let existingIPDescriptor = FetchDescriptor<Miner>(
-                                predicate: #Predicate<Miner> { miner in
-                                    miner.ipAddress == ipAddress
-                                }
-                            )
-
-                            let existingIPMiners = try? modelContext.fetch(existingIPDescriptor)
-                            let existingIPMiner = existingIPMiners?.first
-
-                            // Check if we have a miner with this MAC address (possibly with different IP)
-                            let existingMACDescriptor = FetchDescriptor<Miner>(
-                                predicate: #Predicate<Miner> { miner in
-                                    miner.macAddress == info.macAddr
-                                }
-                            )
-
-                            let existingMACMiners = try? modelContext.fetch(existingMACDescriptor)
-                            let existingMACMiner = existingMACMiners?.first
+                            // Use pre-fetched miners for efficient lookups
+                            let existingIPMiner = minersByIP[ipAddress]
+                            let existingMACMiner = minersByMAC[info.macAddr]
 
                             let miner: Miner
                             if let existing = existingIPMiner {

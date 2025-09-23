@@ -14,15 +14,15 @@ enum MinerType {
 
     case NerdQAxePlus // deviceModel "NerdQAxe+"
     case NerdQAxePlusPlus // deviceModel "NerdQAxe++"
-    case NerdHaxe // NerdHaxe-γ
     case NerdOCTAXE // deviceModel "NerdOCTAXE-γ"
+    case NerdQX // deviceModel NerdQX
     case Unknown
 
     var deviceGenre: MinerDeviceGenre {
         switch self {
         case .BitaxeGamma, .BitaxeGammaTurbo, .BitaxeSupra, .BitaxeUltra:
             return .bitaxe
-        case .NerdQAxePlus, .NerdQAxePlusPlus:
+        case .NerdQAxePlus, .NerdQAxePlusPlus, .NerdOCTAXE, .NerdQX:
             return .nerdQAxe
 
         default:
@@ -70,10 +70,11 @@ extension Miner {
             return .NerdQAxePlus
         case (.none, .some("NerdQAxe++")):
             return .NerdQAxePlusPlus
-        case (.none, .some("NerdHaxe-γ")):
-            return .NerdHaxe
         case (.none, .some("NerdOCTAXE-γ")):
             return .NerdOCTAXE
+        case (.none, .some("NerdQX")):
+            return .NerdQX
+
         case (let .some(boardVersion), _):
             guard let boardVersionInt = Int(boardVersion) else {
                 return .Unknown
@@ -107,6 +108,9 @@ extension Miner {
         if self.minerType == .NerdQAxePlusPlus {
             return "NerdQAxe++"
         }
+        if (self.minerType == .NerdQX) {
+            return "NerdQX"
+        }
 
         return nil
     }
@@ -121,6 +125,10 @@ extension AxeOSDeviceInfo {
             return .NerdQAxePlus
         case (.none, .some("NerdQAxe++")):
             return .NerdQAxePlusPlus
+        case (.none, .some("NerdOCTAXE-γ")):
+            return .NerdOCTAXE
+        case (.none, .some("NerdQX")):
+            return .NerdQX
         case (let .some(boardVersion), _):
             guard let boardVersionInt = Int(boardVersion) else {
                 return .Unknown
