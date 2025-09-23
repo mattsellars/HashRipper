@@ -79,7 +79,7 @@ Configure watch dog and what miners are monitored
 At some point I'll build a release binary but until then if you want to give it a go
 
 ## Building the app
-- Download Xcode from apple or macOS app store
+- Download Xcode 26 from Apple or macOS app store
 - Open the file HashRipper/app/HashRipper.xcodeproj
 - Make sure the destination at the top of Xcode shows `HashRipper > My Mac`
   <img width="626" height="51" alt="Screenshot 2025-07-12 at 8 31 34 PM" src="https://github.com/user-attachments/assets/c0826340-c29e-4200-8616-d53dd144a12d" />
