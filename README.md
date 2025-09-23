@@ -15,7 +15,6 @@ Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shu
 
 ## Future Features
 - ASIC health monitoring for multi-asic devices
-- Profile export to share pool configs
 
 ## Example App screenshots:
 
@@ -23,6 +22,7 @@ Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shu
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 12 34 PM" src="https://github.com/user-attachments/assets/c3737c06-7761-4913-9324-a4bf9132d710" />
 
 ### Profile Management
+Save miner profiles to switch mining pools easily. Define profiles, duplicate and swap primary secondary pool configurations, etc. You can also export profiles to back them up or share with friends.
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 12 40 PM" src="https://github.com/user-attachments/assets/7114643f-26e6-405a-8982-e96375175e0d" />
 
 ### Firmware Version lookups and downloads
@@ -67,6 +67,9 @@ Allow watch dog to monitor your miners for indicators that it has stopped hashin
 ### HashRipper Settings
 Configured general miner polling intervals for the app
 <img width="912" height="700" alt="Screenshot 2025-09-08 at 8 13 03 PM" src="https://github.com/user-attachments/assets/6abbc208-b27c-4234-a042-5f0f072c06ff" />
+
+Configure subnets to make the miner swarm scan miners that are only visibily via Tailscale vpn subnets
+<img width="912" height="700" alt="Screenshot 2025-09-22 at 9 35 50 PM" src="https://github.com/user-attachments/assets/41777788-3d00-4a80-8bf6-5a871120484c" />
 
 
 Configure watch dog and what miners are monitored
