@@ -166,7 +166,40 @@ class AppSettings {
             subnets = getMyIPAddress()
         }
 
-        return Array(Set(subnets)) // Remove duplicates
+        // Deduplicate based on subnet prefix (first 3 octets)
+        return deduplicateSubnets(subnets)
+    }
+
+    private func deduplicateSubnets(_ ipAddresses: [String]) -> [String] {
+        var seenSubnets = Set<String>()
+        var uniqueIPs: [String] = []
+
+        for ipAddress in ipAddresses {
+            // Skip loopback addresses (127.x.x.x)
+            if isLoopbackAddress(ipAddress) {
+                continue
+            }
+
+            let subnetPrefix = getSubnetPrefix(ipAddress)
+            if !seenSubnets.contains(subnetPrefix) {
+                seenSubnets.insert(subnetPrefix)
+                uniqueIPs.append(ipAddress)
+            }
+        }
+
+        return uniqueIPs
+    }
+
+    private func getSubnetPrefix(_ ipAddress: String) -> String {
+        let components = ipAddress.split(separator: ".")
+        if components.count >= 3 {
+            return "\(components[0]).\(components[1]).\(components[2])"
+        }
+        return ipAddress // Fallback for invalid IPs
+    }
+
+    private func isLoopbackAddress(_ ipAddress: String) -> Bool {
+        return ipAddress.hasPrefix("127.")
     }
 
     private init() {

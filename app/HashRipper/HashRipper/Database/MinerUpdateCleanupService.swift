@@ -71,11 +71,12 @@ actor MinerUpdateCleanupService {
         lastCleanupTime = Date()
 
         do {
-            // Get background context for cleanup operations
-            let backgroundContext = ModelContext(SharedDatabase.shared.modelContainer)
+            // Create a dedicated context for ProfilesAndConfig to ensure MinerUpdate is accessible
+            let modelContainer = SharedDatabase.shared.modelContainer
+            let context = ModelContext(modelContainer)
 
-            // Get all miners that have updates
-            let minersWithUpdates = try await getMinersNeedingCleanup(context: backgroundContext)
+            // Get all miners that have updates using database context
+            let minersWithUpdates = try getMinersNeedingCleanupSync(context: context)
 
             if minersWithUpdates.isEmpty {
                 print("✅ No miners need cleanup")
@@ -90,12 +91,15 @@ actor MinerUpdateCleanupService {
             for batch in minersWithUpdates.chunked(into: batchSize) {
                 if Task.isCancelled { break }
 
-                let deletedInBatch = await cleanupBatchOfMiners(batch, context: backgroundContext)
+                let deletedInBatch = try cleanupBatchOfMinersSync(batch, context: context)
                 totalDeleted += deletedInBatch
 
                 // Small delay between batches to avoid overwhelming the system
                 try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
+
+            // Save all changes at the end
+            try context.save()
 
             if totalDeleted > 0 {
                 print("✅ Cleanup completed: deleted \(totalDeleted) old MinerUpdate records")
@@ -108,7 +112,7 @@ actor MinerUpdateCleanupService {
         }
     }
 
-    private func getMinersNeedingCleanup(context: ModelContext) async throws -> [String] {
+    nonisolated private func getMinersNeedingCleanupSync(context: ModelContext) throws -> [String] {
         // Get distinct mac addresses - this is much more efficient than fetching all records
         let distinctMacDescriptor = FetchDescriptor<MinerUpdate>(
             sortBy: [SortDescriptor(\MinerUpdate.macAddress)]
@@ -136,31 +140,23 @@ actor MinerUpdateCleanupService {
         return minersNeedingCleanup
     }
 
-    private func cleanupBatchOfMiners(_ macAddresses: [String], context: ModelContext) async -> Int {
+    nonisolated private func cleanupBatchOfMinersSync(_ macAddresses: [String], context: ModelContext) throws -> Int {
         var totalDeleted = 0
 
         for macAddress in macAddresses {
-            if Task.isCancelled { break }
-
             do {
-                let deleted = try await cleanupSingleMiner(macAddress: macAddress, context: context)
+                let deleted = try cleanupSingleMinerSync(macAddress: macAddress, context: context)
                 totalDeleted += deleted
             } catch {
                 print("⚠️ Failed to cleanup miner \(macAddress): \(error)")
             }
         }
 
-        // Save all changes for this batch
-        do {
-            try context.save()
-        } catch {
-            print("❌ Failed to save cleanup changes: \(error)")
-        }
-
+        // Note: Context saving is handled by database.withModelContext
         return totalDeleted
     }
 
-    private func cleanupSingleMiner(macAddress: String, context: ModelContext) async throws -> Int {
+    nonisolated private func cleanupSingleMinerSync(macAddress: String, context: ModelContext) throws -> Int {
         // Count total updates for this miner
         let countDescriptor = FetchDescriptor<MinerUpdate>(
             predicate: #Predicate<MinerUpdate> { update in

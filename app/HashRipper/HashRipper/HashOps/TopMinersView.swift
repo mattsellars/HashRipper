@@ -33,18 +33,19 @@ struct TopMinersView: View {
                     let minerData = index < topMiners.count ? topMiners[index] : nil
                     let isPlaceholder = minerData == nil
                     
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         // Rank badge
                         ZStack {
                             Circle()
                                 .fill(rankColor(for: index))
                                 .frame(width: 24, height: 24)
                             Text("\(index + 1)")
-                                .font(.caption)
+                                .font(.subheadline)
+                                .fontDesign(.monospaced)
                                 .fontWeight(.bold)
-                                .foregroundColor(.white)
-                        }
-                        
+                                .foregroundColor(.black)
+                        }.padding(.leading, 6)
+
                         // Miner info
                         VStack(alignment: .leading, spacing: 2) {
                             Text(minerData?.miner.hostName ?? "Placeholder Miner")
