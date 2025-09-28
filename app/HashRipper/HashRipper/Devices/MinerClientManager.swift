@@ -567,17 +567,24 @@ class MinerClientManager {
                 }
                 // Trigger cleanup check if this miner might have exceeded threshold
                 let macAddress = miner.macAddress // Capture MAC address while in correct context
-                Task {
-                    // Check if this miner has exceeded our cleanup threshold
-                    let updateCountDescriptor = FetchDescriptor<MinerUpdate>(
-                        predicate: #Predicate<MinerUpdate> { update in
-                            update.macAddress == macAddress
-                        }
-                    )
-                    if let updateCount = try? context.fetchCount(updateCountDescriptor), updateCount > kMaxUpdateHistory {
-                        // Trigger batched cleanup service
-                        await MinerClientManager.sharedCleanupService?.triggerCleanupCheck()
+
+                // Check count in the current context (thread-safe)
+                let updateCountDescriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == macAddress
                     }
+                )
+
+                do {
+                    let updateCount = try context.fetchCount(updateCountDescriptor)
+                    if updateCount > kMaxUpdateHistory {
+                        // Trigger batched cleanup service (safe to do in Task since it doesn't use the context)
+                        Task {
+                            await MinerClientManager.sharedCleanupService?.triggerCleanupCheck()
+                        }
+                    }
+                } catch {
+                    print("⚠️ Warning: Could not check update count for cleanup trigger: \(error)")
                 }
                 try context.save()
             } catch let error {

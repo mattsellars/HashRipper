@@ -25,97 +25,160 @@ struct MinerProfileTileView: View {
     var handleDeployProfile: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Text("Profile Name:")
-                    .font(.body)
+        let headerView = HStack {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(minerProfile.name)
                     .font(.headline)
-            }
-            HStack {
-                Text("Pool:")
-                    .font(.body)
-                Text(minerProfile.stratumURL)
-                    .font(.headline)
-                Text("Port:")
-                    .font(.body)
-                Text(String(minerProfile.stratumPort))
-                    .font(.headline)
-            }
-            HStack {
-                Text("User:")
-                    .font(.body)
-                if minerProfile.isPrimaryPoolParasite {
-                    Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.parasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
-                        .font(.headline)
-                } else {
-                    Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>")")
-                        .font(.headline)
+                    .fontWeight(.semibold)
+                if !minerProfile.templateNotes.isEmpty {
+                    Text(minerProfile.templateNotes)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-
             }
-            if
-                let url = minerProfile.fallbackStratumURL,
-                let port = minerProfile.fallbackStratumPort,
-                let account = minerProfile.fallbackStratumAccount
-            {
+            Spacer()
+            Image(systemName: "server.rack")
+                .font(.title2)
+                .foregroundColor(.accentColor)
+        }
+
+        let primaryPoolView = VStack(alignment: .leading, spacing: 8) {
+            Label("Primary Pool", systemImage: "globe")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(.primary)
+
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Fallback:")
-                        .font(.body)
-                    Text(url)
-                        .font(.headline)
+                    Text("URL:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(minerProfile.stratumURL)
+                        .font(.body.monospaced())
+                }
+                HStack {
                     Text("Port:")
-                        .font(.body)
-                    Text(String(port))
-                        .font(.headline)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(String(minerProfile.stratumPort))
+                        .font(.body.monospaced())
                 }
                 HStack {
                     Text("User:")
-                        .font(.body)
-
-                    if minerProfile.isFallbackPoolParasite {
-                        Text("\(account).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.fallbackParasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
-                            .font(.headline)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    if minerProfile.isPrimaryPoolParasite {
+                        Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.parasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
+                            .font(.body.monospaced())
                     } else {
-                        Text("\(account).\(self.minerName ?? "<miner-name-here>")")
-                            .font(.headline)
+                        Text("\(minerProfile.poolAccount).\(self.minerName ?? "<miner-name-here>")")
+                            .font(.body.monospaced())
                     }
                 }
             }
-            if (showOptionalActions) {
-                HStack {
-                    if let deploy = handleDeployProfile {
-                        Button(
-                            action: deploy,
-                            label: {
-                                HStack {
-                                    Image(systemName: "iphone.and.arrow.forward.inward")
-                                }
-                                Text("Deploy")
-                            }
+            .padding(.leading, 16)
+        }
 
-                        )
-                        .help(Text("Deploy this profile to miners"))
+        let fallbackPoolSection = Group {
+            if let url = minerProfile.fallbackStratumURL,
+               let port = minerProfile.fallbackStratumPort,
+               let account = minerProfile.fallbackStratumAccount {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Fallback Pool", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("URL:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(url)
+                                .font(.body.monospaced())
+                        }
+                        HStack {
+                            Text("Port:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(String(port))
+                                .font(.body.monospaced())
+                        }
+                        HStack {
+                            Text("User:")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            if minerProfile.isFallbackPoolParasite {
+                                Text("\(account).\(self.minerName ?? "<miner-name-here>").\(self.minerProfile.fallbackParasiteLightningAddress ?? "no xverse lightning address configured!")@parasite.sati.pro")
+                                    .font(.body.monospaced())
+                            } else {
+                                Text("\(account).\(self.minerName ?? "<miner-name-here>")")
+                                    .font(.body.monospaced())
+                            }
+                        }
                     }
-                    Spacer()
-                    Button(action: shareProfile, label: { Image(systemName: "square.and.arrow.up") })
-                        .help(Text("Share this profile"))
-                    Button(action: showEditProfileFormSheet, label: { Image(systemName: "pencil") })
-                        .help(Text("Edit this profile"))
-                    Button(action: showDuplicateProfileFormSheet, label: { Image(systemName: "square.on.square") })
-                        .help(Text("Duplicate this profile"))
-                    Button(action: showDeleteConfirmPrompt, label: { Image(systemName: "trash") })
-                        .help(Text("Delete this profile"))
+                    .padding(.leading, 16)
                 }
-                .padding(.horizontal, 6)
             }
         }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
+
+        let actionsSection = Group {
+            Divider()
+
+            HStack(spacing: 12) {
+                if let deploy = handleDeployProfile {
+                    Button(action: deploy) {
+                        Label("Deploy", systemImage: "iphone.and.arrow.forward.inward")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .help(Text("Deploy this profile to miners"))
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    Button(action: shareProfile) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .help(Text("Share this profile"))
+
+                    Button(action: showEditProfileFormSheet) {
+                        Image(systemName: "pencil")
+                    }
+                    .help(Text("Edit this profile"))
+
+                    Button(action: showDuplicateProfileFormSheet) {
+                        Image(systemName: "square.on.square")
+                    }
+                    .help(Text("Duplicate this profile"))
+
+                    Button(action: showDeleteConfirmPrompt) {
+                        Image(systemName: "trash")
+                    }
+                    .foregroundColor(.red)
+                    .help(Text("Delete this profile"))
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+
+        return VStack(alignment: .leading, spacing: 16) {
+            headerView
+            primaryPoolView
+            fallbackPoolSection
+
+            if showOptionalActions {
+                actionsSection
+            }
+        }
+        .padding(16)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(colorScheme == .light ? Color.black.opacity(0.4) : Color.gray, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
         .alert("Are you sure you want to delete this profile?", isPresented: $showDeleteConfirmation) {
 
                 Button("Delete", role: .destructive) {

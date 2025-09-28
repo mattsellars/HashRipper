@@ -172,8 +172,7 @@ actor MinerUpdateCleanupService {
         // Calculate how many to delete (delete extra to avoid frequent cleanups)
         let deletionCount = totalCount - targetUpdatesPerMiner
 
-        // Use batch delete with a subquery to delete oldest records
-        // We need to get the timestamp threshold for deletion
+        // Get oldest records and delete them individually to handle relationship issues safely
         var oldestDescriptor = FetchDescriptor<MinerUpdate>(
             predicate: #Predicate<MinerUpdate> { update in
                 update.macAddress == macAddress
@@ -184,16 +183,61 @@ actor MinerUpdateCleanupService {
 
         let oldestUpdates = try context.fetch(oldestDescriptor)
 
-        guard let lastTimestampToDelete = oldestUpdates.last?.timestamp else { return 0 }
+        // Delete records individually to ensure proper relationship handling
+        var actualDeleted = 0
+        for update in oldestUpdates {
+            do {
+                // Verify the relationship is intact before deletion
+                _ = update.miner.ipAddress // This will throw if relationship is broken
+                context.delete(update)
+                actualDeleted += 1
+            } catch {
+                print("    ⚠️ Found corrupted MinerUpdate for miner \(macAddress), deleting: \(error)")
+                // Delete the corrupted update anyway since it's orphaned
+                context.delete(update)
+                actualDeleted += 1
+            }
+        }
 
-        // Now use batch delete for all records older than or equal to this timestamp
-        try context.delete(model: MinerUpdate.self, where: #Predicate<MinerUpdate> { update in
-            update.macAddress == macAddress && update.timestamp <= lastTimestampToDelete
-        })
+        print("🗑️ Deleted \(actualDeleted) old updates for miner \(macAddress) (had \(totalCount), now has ~\(targetUpdatesPerMiner))")
 
-        print("🗑️ Batch deleted \(deletionCount) old updates for miner \(macAddress) (had \(totalCount), now has ~\(targetUpdatesPerMiner))")
+        return actualDeleted
+    }
 
-        return deletionCount
+    /// Clean up orphaned MinerUpdate records that have broken miner relationships
+    func cleanupOrphanedUpdates() async {
+        print("🔍 Checking for orphaned MinerUpdate records...")
+
+        do {
+            let modelContainer = SharedDatabase.shared.modelContainer
+            let context = ModelContext(modelContainer)
+
+            // Get all MinerUpdate records
+            let allUpdates = try context.fetch(FetchDescriptor<MinerUpdate>())
+            var orphanedCount = 0
+
+            for update in allUpdates {
+                do {
+                    // Try to access the miner relationship
+                    _ = update.miner.ipAddress
+                } catch {
+                    // This update has a broken relationship, delete it
+                    print("🧹 Deleting orphaned MinerUpdate with broken miner relationship")
+                    context.delete(update)
+                    orphanedCount += 1
+                }
+            }
+
+            if orphanedCount > 0 {
+                try context.save()
+                print("✅ Cleaned up \(orphanedCount) orphaned MinerUpdate records")
+            } else {
+                print("✅ No orphaned MinerUpdate records found")
+            }
+
+        } catch {
+            print("❌ Error cleaning up orphaned updates: \(error)")
+        }
     }
 }
 

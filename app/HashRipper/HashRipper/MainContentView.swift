@@ -114,6 +114,7 @@ struct MainContentView: View {
                 .background(.thickMaterial)
                 .zIndex(2)
                 .border(width: 1, edges: [.bottom], color: Color(NSColor.separatorColor))
+                
                 switch sideBarSelection {
                 case "hashops":
                     HashOpsView()

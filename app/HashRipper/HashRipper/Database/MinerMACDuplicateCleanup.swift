@@ -71,8 +71,28 @@ struct MinerMACDuplicateCleanup {
 
                 // Filter to only updates that belong to this specific duplicate miner
                 // We'll use a more direct approach by getting all updates and filtering manually
-                let updates = allUpdatesForMAC.filter { update in
-                    update.miner.ipAddress == duplicateMinerIP
+                // Use safe access to handle broken relationships
+                var updates: [MinerUpdate] = []
+                var orphanedUpdates: [MinerUpdate] = []
+
+                for update in allUpdatesForMAC {
+                    do {
+                        let minerIP = update.miner.ipAddress
+                        if minerIP == duplicateMinerIP {
+                            updates.append(update)
+                        }
+                    } catch {
+                        print("    ⚠️ Found orphaned MinerUpdate with broken miner relationship: \(error)")
+                        orphanedUpdates.append(update)
+                    }
+                }
+
+                // Clean up orphaned updates by deleting them
+                if !orphanedUpdates.isEmpty {
+                    print("    🧹 Deleting \(orphanedUpdates.count) orphaned MinerUpdates")
+                    for orphanedUpdate in orphanedUpdates {
+                        context.delete(orphanedUpdate)
+                    }
                 }
 
                 print("    📊 Reassigning \(updates.count) updates to kept miner")
