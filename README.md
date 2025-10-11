@@ -75,6 +75,13 @@ Configure subnets to make the miner swarm scan miners that are only visibily via
 Configure watch dog and what miners are monitored
 <img width="912" height="700" alt="Screenshot 2025-09-08 at 8 12 59 PM" src="https://github.com/user-attachments/assets/cc274c26-c0b9-479f-ac62-d8713eea911b" />
 
+### Status Bar Overview
+
+Aggregated miner stats in a status bar view.
+
+<img width="352" height="461" alt="Screenshot 2025-10-11 at 12 07 24 PM" src="https://github.com/user-attachments/assets/02c816b4-8688-455b-ba71-2ab8b882378f" />
+
+#Building the app from Source
 
 At some point I'll build a release binary but until then if you want to give it a go
 
