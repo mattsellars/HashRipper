@@ -81,6 +81,21 @@ class AppSettings {
             userDefaults.set(newValue, forKey: backgroundPollingIntervalKey)
         }
     }
+
+    @ObservationIgnored
+    private let statusBarEnabledKey = "statusBarEnabled"
+    var isStatusBarEnabled: Bool {
+        get {
+            // Default to true if not set
+            if userDefaults.object(forKey: statusBarEnabledKey) == nil {
+                return true
+            }
+            return userDefaults.bool(forKey: statusBarEnabledKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: statusBarEnabledKey)
+        }
+    }
     
     // MARK: - WatchDog Settings
     

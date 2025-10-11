@@ -111,7 +111,7 @@ struct TopMinersView: View {
                   let bestDiff = latestUpdate.bestDiff,
                   !bestDiff.isEmpty && bestDiff != "N/A" else { return }
             
-            let bestDiffValue = parseDifficultyValue(bestDiff)
+            let bestDiffValue = DifficultyParser.parseDifficultyValue(bestDiff)
             guard bestDiffValue > 0 else { return }
             
             // Check if this miner is already in the top 3
@@ -147,7 +147,7 @@ struct TopMinersView: View {
                    let bestDiff = latestUpdate.bestDiff,
                    !bestDiff.isEmpty && bestDiff != "N/A" {
                     
-                    let bestDiffValue = parseDifficultyValue(bestDiff)
+                    let bestDiffValue = DifficultyParser.parseDifficultyValue(bestDiff)
                     if bestDiffValue > 0 {
                         minerDataArray.append(TopMinerData(
                             miner: miner,
@@ -164,47 +164,6 @@ struct TopMinersView: View {
                 topMiners = top3
             }
         }
-    }
-    
-    private func parseDifficultyValue(_ diffString: String) -> Double {
-        let trimmed = diffString.trimmingCharacters(in: .whitespaces)
-        
-        // Extract the numeric part and suffix
-        var numericString = ""
-        var suffix = ""
-        
-        for char in trimmed {
-            if char.isNumber || char == "." {
-                numericString += String(char)
-            } else if char.isLetter {
-                suffix += String(char).uppercased()
-            }
-        }
-        
-        guard let baseValue = Double(numericString) else {
-            return 0
-        }
-        
-        // Convert based on suffix
-        let multiplier: Double
-        switch suffix {
-        case "K":
-            multiplier = 1_000
-        case "M":
-            multiplier = 1_000_000
-        case "G":
-            multiplier = 1_000_000_000
-        case "T":
-            multiplier = 1_000_000_000_000
-        case "P":
-            multiplier = 1_000_000_000_000_000
-        case "E":
-            multiplier = 1_000_000_000_000_000_000
-        default:
-            multiplier = 1 // No suffix, treat as base value
-        }
-        
-        return baseValue * multiplier
     }
 }
 

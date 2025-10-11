@@ -12,6 +12,7 @@ struct GeneralSettingsView: View {
     @State private var settings = AppSettings.shared
     @State private var minerRefreshInterval: Double = 10.0
     @State private var backgroundPollingInterval: Double = 10.0
+    @State private var isStatusBarEnabled: Bool = true
     
     var body: some View {
         Form {
@@ -88,6 +89,24 @@ struct GeneralSettingsView: View {
                     Divider()
 
                     VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Show Status Bar")
+                                .font(.headline)
+                            Spacer()
+                            Toggle("", isOn: $isStatusBarEnabled)
+                                .onChange(of: isStatusBarEnabled) { _, newValue in
+                                    settings.isStatusBarEnabled = newValue
+                                }
+                        }
+
+                        Text("Show mining statistics in the macOS menu bar for quick access.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Performance Tips")
                             .font(.headline)
                         
@@ -118,6 +137,7 @@ struct GeneralSettingsView: View {
         .onAppear {
             minerRefreshInterval = settings.minerRefreshInterval
             backgroundPollingInterval = settings.backgroundPollingInterval
+            isStatusBarEnabled = settings.isStatusBarEnabled
         }
     }
 }

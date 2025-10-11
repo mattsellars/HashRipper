@@ -170,4 +170,6 @@ struct MainContentView: View {
     private func openDiagnosticWindow() {
         openWindow(id: MinerWebsocketRecordingScreen.windowGroupId)
     }
+
+
 }

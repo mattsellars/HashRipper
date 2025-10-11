@@ -11,16 +11,26 @@ import Network
 
 @main
 struct HashRipperApp: App {
+    @NSApplicationDelegateAdaptor(HashRipperAppDelegate.self) var appDelegate
+
     var newMinerScanner = NewMinerScanner(database: SharedDatabase.shared.database)
     var minerClientManager = MinerClientManager(database: SharedDatabase.shared.database)
     var firmwareDownloadsManager = FirmwareDownloadsManager()
     var firmwareDeploymentManager: FirmwareDeploymentManager
-    
+    var statusBarManager = StatusBarManager()
+    var statsAggregator: MinerStatsAggregator
+
     init() {
         nw_tls_create_options()
         firmwareDeploymentManager = FirmwareDeploymentManager(
             clientManager: minerClientManager,
             downloadsManager: firmwareDownloadsManager
+        )
+
+        // Initialize stats aggregator with database and status bar manager
+        statsAggregator = MinerStatsAggregator(
+            database: SharedDatabase.shared.database,
+            statusBarManager: statusBarManager
         )
 
         // Connect deployment manager to client manager for watchdog integration
@@ -54,11 +64,49 @@ struct HashRipperApp: App {
     }
 
     var body: some Scene {
-        WindowGroup(content: {
+        Window("HashRipper", id: "main", content: {
             MainContentView()
                 .onAppear {
                     // Turn off this terrible design choice https://stackoverflow.com/questions/65460457/how-do-i-disable-the-show-tab-bar-menu-option-in-swiftui
                     let _ = NSApplication.shared.windows.map { $0.tabbingMode = .disallowed }
+
+                    // Start status bar immediately for testing
+                    print("🚀 App onAppear - calling showStatusBar() immediately")
+                    statusBarManager.showStatusBar()
+
+                    // Start stats aggregation with delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        print("🚀 Starting stats aggregation")
+                        Task {
+                            await statsAggregator.startAggregation()
+                        }
+                    }
+
+                    // Set up notification listeners for status bar
+                    NotificationCenter.default.addObserver(
+                        forName: .refreshMinerStats,
+                        object: nil,
+                        queue: .main
+                    ) { _ in
+                        Task {
+                            await statsAggregator.immediateUpdate()
+                        }
+                    }
+
+                    // Listen for miner data updates to refresh status bar immediately
+                    NotificationCenter.default.addObserver(
+                        forName: .minerUpdateInserted,
+                        object: nil,
+                        queue: .main
+                    ) { _ in
+                        Task {
+                            await statsAggregator.forceUpdate()
+                        }
+                    }
+
+                    // Set up window management for status bar
+                    setupWindowManagement()
+
 
                     // Trigger local network permission check immediately
                     Task {
@@ -81,6 +129,10 @@ struct HashRipperApp: App {
                     print("📱 App terminating - stopping all operations")
                     newMinerScanner.stopScanning()
                     minerClientManager.pauseAllRefresh()
+                    statusBarManager.hideStatusBar()
+                    Task {
+                        await statsAggregator.stopAggregation()
+                    }
                 }
         })
         .commands {
@@ -146,6 +198,36 @@ struct HashRipperApp: App {
         .windowResizability(.contentSize)
 
     }
+
+    // Function to set up window management for status bar
+    private func setupWindowManagement() {
+        // Set up the action to create new main windows
+        // This will be set by MainContentView when it appears
+        statusBarManager.openMainWindowAction = nil
+
+        // Monitor window closing to save frame
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            if let window = notification.object as? NSWindow {
+                let className = NSStringFromClass(type(of: window))
+
+                // Only save frame for main app windows
+                if !className.contains("StatusBar") &&
+                   !className.contains("MenuBar") &&
+                   !window.title.contains("Settings") &&
+                   !window.title.contains("Downloads") &&
+                   window.canBecomeKey {
+
+                    print("🪟 Main window closing, saving frame: \(window.frame)")
+                    statusBarManager.saveMainWindowFrame(window.frame)
+                }
+            }
+        }
+    }
+
 
     // Function to trigger local network permission dialog
     private func triggerLocalNetworkPermission() async {
