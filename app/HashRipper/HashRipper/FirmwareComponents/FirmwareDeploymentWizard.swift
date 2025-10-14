@@ -669,9 +669,9 @@ private struct DeploymentScreen: View {
                 case let .restartingManually(phase):
                     switch (phase) {
                     case .firmware:
-                        return completedMinerSteps
+                        return completedMinerSteps + 1  // Miner upload is complete
                     case .webInterface:
-                        return completedMinerSteps + 1
+                        return completedMinerSteps + 2  // Both uploads are complete
                     }
                 case .failed, .cancelled:
                     return completedMinerSteps + 0
