@@ -359,50 +359,43 @@ struct WatchDogRestartChart: View {
     }
     
     private var chartData: [ChartDataPoint] {
-        guard !actionLogs.isEmpty else { return [] }
-        
-        // Group actions by hour
         let calendar = Calendar.current
+        let currentHour = calendar.dateInterval(of: .hour, for: Date())?.start ?? Date()
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+
+        // Calculate start time: 48 hours ago
+        let startTime = calendar.date(byAdding: .hour, value: -48, to: currentHour) ?? currentHour.addingTimeInterval(-48 * kOneHourSeconds)
+
+        // Group existing actions by hour
         let grouped = Dictionary(grouping: actionLogs) { actionLog in
             let date = Date(timeIntervalSince1970: Double(actionLog.timestamp) / 1000.0)
             return calendar.dateInterval(of: .hour, for: date)?.start ?? date
         }
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
 
-        // Convert to chart data points
-        var dataPoints: [ChartDataPoint] = grouped.map { (hourStart, actions) in
-            return ChartDataPoint(
-                date: hourStart,
-                count: actions.count,
-                hour: formatter.string(from: hourStart),
-                actionLogs: actions
-            )
-        }.sorted { $0.date < $1.date }
+        // Create data points for all hours in the last 48 hours
+        var dataPoints: [ChartDataPoint] = []
+        var currentIterHour = startTime
 
-        // Fill in gaps between last action and current hour
-        if let lastDataPoint = dataPoints.last {
-            let currentHour = calendar.dateInterval(of: .hour, for: Date())?.start ?? Date()
-            var nextHour = calendar.date(byAdding: .hour, value: 1, to: lastDataPoint.date) ?? lastDataPoint.date.advanced(by: kOneHourSeconds)
-
-            while nextHour <= currentHour {
-                dataPoints.append(ChartDataPoint(
-                    date: nextHour,
-                    count: 0,
-                    hour: formatter.string(from: nextHour),
-                    actionLogs: []
-                ))
-                nextHour = calendar.date(byAdding: .hour, value: 1, to: nextHour) ?? nextHour.advanced(by: kOneHourSeconds)
-            }
+        while currentIterHour <= currentHour {
+            let actionsForHour = grouped[currentIterHour] ?? []
+            dataPoints.append(ChartDataPoint(
+                date: currentIterHour,
+                count: actionsForHour.count,
+                hour: formatter.string(from: currentIterHour),
+                actionLogs: actionsForHour
+            ))
+            currentIterHour = calendar.date(byAdding: .hour, value: 1, to: currentIterHour) ?? currentIterHour.addingTimeInterval(kOneHourSeconds)
         }
 
-        // Only return actual data points, no filling in missing hours
-        // This prevents too many empty bars from being shown
+        // Set initial selection to most recent hour with data, or current hour
         if selectedDataPoint == nil {
             DispatchQueue.main.async {
-                selectedDataPoint = dataPoints.last
+                let barsWithData = dataPoints.filter { $0.count > 0 }
+                selectedDataPoint = barsWithData.last ?? dataPoints.last
             }
         }
+
         return dataPoints
     }
     
@@ -440,33 +433,34 @@ struct WatchDogRestartChart: View {
     }
     
     private var chartAndCardView: some View {
-        HStack(spacing: 16) {
-            scrollableChartView
-            detailCardView
+        GeometryReader { geometry in
+            HStack(spacing: 16) {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        chartView
+                            .frame(height: geometry.size.height)
+                    }
+                    .frame(width: geometry.size.width - 276) // Total width minus card width (260) and spacing (16)
+                    .scrollTargetLayout()
+                    .scrollPosition($scrollPosition, anchor: .trailing)
+                    .onChange(of: selectedDataPoint) {
+                        guard let id: String = selectedDataPoint?.id else { return }
+
+                        withAnimation {
+                            proxy.scrollTo(id, anchor: .bottom)
+                        }
+                    }
+                    .onAppear {
+                        setupInitialSelection()
+                        setupInitialScroll()
+                    }
+                }
+
+                detailCardView
+                    .frame(width: 260)
+            }
         }
         .animation(.easeInOut(duration: 0.3), value: selectedDataPoint)
-    }
-    
-    private var scrollableChartView: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                chartView
-            }
-            .scrollTargetLayout()
-            .scrollPosition($scrollPosition, anchor: .trailing)
-            .onChange(of: selectedDataPoint) {
-                guard let id: String = selectedDataPoint?.id else { return }
-
-                withAnimation {
-                    proxy.scrollTo(id, anchor: .bottom)
-                }
-            }
-        }
-        .onAppear {
-            setupInitialSelection()
-            setupInitialScroll()
-        }
-        .frame(maxWidth: .infinity)
     }
 
     private let selectedGradient = Gradient(colors: [Color.orange, Color.blue])
@@ -517,19 +511,17 @@ struct WatchDogRestartChart: View {
                     handleChartTap(location: value.location, chartProxy: chartProxy)
                 }
         }
-        .frame(width: CGFloat(chartData.count * 36))
-        .frame(maxHeight: .infinity)
+        .frame(width: CGFloat(chartData.count * 50))
     }
     
     private var detailCardView: some View {
         RestartDetailCard(
             dataPoint: selectedDataPoint,
             allMiners: allMiners,
-            onDismiss: { 
+            onDismiss: {
                 selectedDataPoint = nil
             }
         )
-        .frame(width: 260)
     }
     
     private func setupInitialSelection() {
