@@ -186,17 +186,11 @@ actor MinerUpdateCleanupService {
         // Delete records individually to ensure proper relationship handling
         var actualDeleted = 0
         for update in oldestUpdates {
-            do {
-                // Verify the relationship is intact before deletion
-                _ = update.miner.ipAddress // This will throw if relationship is broken
-                context.delete(update)
-                actualDeleted += 1
-            } catch {
-                print("    ⚠️ Found corrupted MinerUpdate for miner \(macAddress), deleting: \(error)")
-                // Delete the corrupted update anyway since it's orphaned
-                context.delete(update)
-                actualDeleted += 1
-            }
+            // Simply delete the update - no need to verify relationship
+            // The miner might be in ephemeral storage and could be deleted,
+            // causing a fatal error if we try to access it
+            context.delete(update)
+            actualDeleted += 1
         }
 
         print("🗑️ Deleted \(actualDeleted) old updates for miner \(macAddress) (had \(totalCount), now has ~\(targetUpdatesPerMiner))")
@@ -216,13 +210,16 @@ actor MinerUpdateCleanupService {
             let allUpdates = try context.fetch(FetchDescriptor<MinerUpdate>())
             var orphanedCount = 0
 
+            // Fetch all current miner MAC addresses to identify orphans
+            let minerDescriptor = FetchDescriptor<Miner>()
+            let allMiners = try context.fetch(minerDescriptor)
+            let validMacAddresses = Set(allMiners.map { $0.macAddress })
+
             for update in allUpdates {
-                do {
-                    // Try to access the miner relationship
-                    _ = update.miner.ipAddress
-                } catch {
-                    // This update has a broken relationship, delete it
-                    print("🧹 Deleting orphaned MinerUpdate with broken miner relationship")
+                // Check if this update's miner still exists by comparing MAC addresses
+                // We can't safely access update.miner if the relationship is broken
+                if !validMacAddresses.contains(update.macAddress) {
+                    print("🧹 Deleting orphaned MinerUpdate for non-existent miner \(update.macAddress)")
                     context.delete(update)
                     orphanedCount += 1
                 }
