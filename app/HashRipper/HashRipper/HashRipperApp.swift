@@ -197,6 +197,11 @@ struct HashRipperApp: App {
         .defaultSize(width: 500, height: 400)
         .windowResizability(.contentSize)
 
+        Window("About HashRipper", id: AboutView.windowGroupId) {
+            AboutView()
+        }
+        .windowResizability(.contentSize)
+
     }
 
     // Function to set up window management for status bar
