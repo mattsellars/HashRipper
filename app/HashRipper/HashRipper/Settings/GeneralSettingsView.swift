@@ -13,6 +13,7 @@ struct GeneralSettingsView: View {
     @State private var minerRefreshInterval: Double = 10.0
     @State private var backgroundPollingInterval: Double = 10.0
     @State private var isStatusBarEnabled: Bool = true
+    @State private var offlineThreshold: Int = 5
     
     var body: some View {
         Form {
@@ -107,6 +108,43 @@ struct GeneralSettingsView: View {
                     Divider()
 
                     VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Offline Threshold")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(offlineThreshold) consecutive timeouts")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(offlineThreshold) },
+                                set: { offlineThreshold = Int($0) }
+                            ),
+                            in: 3...20,
+                            step: 1
+                        ) {
+                            Text("Offline Threshold")
+                        } minimumValueLabel: {
+                            Text("3")
+                                .font(.caption)
+                        } maximumValueLabel: {
+                            Text("20")
+                                .font(.caption)
+                        }
+                        .onChange(of: offlineThreshold) { _, newValue in
+                            settings.offlineThreshold = newValue
+                        }
+
+                        Text("Number of consecutive timeout errors before a miner is marked as offline.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Performance Tips")
                             .font(.headline)
                         
@@ -138,6 +176,7 @@ struct GeneralSettingsView: View {
             minerRefreshInterval = settings.minerRefreshInterval
             backgroundPollingInterval = settings.backgroundPollingInterval
             isStatusBarEnabled = settings.isStatusBarEnabled
+            offlineThreshold = settings.offlineThreshold
         }
     }
 }

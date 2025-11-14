@@ -9,6 +9,12 @@ import Foundation
 import SwiftData
 
 extension Miner {
+    /// Checks if the miner is offline based on consecutive timeout errors
+    /// and the user's configured offline threshold setting
+    var isOffline: Bool {
+        return consecutiveTimeoutErrors >= AppSettings.shared.offlineThreshold
+    }
+
     /// Gets the latest MinerUpdate for this miner
     func getLatestUpdate(from context: ModelContext) -> MinerUpdate? {
         let macAddress = self.macAddress

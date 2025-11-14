@@ -96,7 +96,25 @@ class AppSettings {
             userDefaults.set(newValue, forKey: statusBarEnabledKey)
         }
     }
-    
+
+    @ObservationIgnored
+    private let offlineThresholdKey = "offlineThreshold"
+    var offlineThreshold: Int {
+        get {
+            let threshold = userDefaults.integer(forKey: offlineThresholdKey)
+            // Default to 5, ensure it's within valid range (3-20)
+            if threshold == 0 {
+                return 5
+            }
+            return min(max(threshold, 3), 20)
+        }
+        set {
+            // Clamp value to valid range
+            let clampedValue = min(max(newValue, 3), 20)
+            userDefaults.set(clampedValue, forKey: offlineThresholdKey)
+        }
+    }
+
     // MARK: - WatchDog Settings
     
     @ObservationIgnored

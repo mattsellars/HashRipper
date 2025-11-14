@@ -7,13 +7,18 @@
 
 import SwiftUI
 import SwiftData
-
+import os.log
 
 struct MinerHashOpsCompactTile: View {
+    var logger: Logger {
+        HashRipperLogger.shared.loggerForCategory("MinerHashOpsCompactTile")
+    }
     static let tileWidth: CGFloat = 350
     @Environment(\.minerClientManager) var minerClientManager
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.firmwareReleaseViewModel) var firmwareViewModel: FirmwareReleasesViewModel
+    @Environment(\.newMinerScanner) var newMinerScanner
+    @Environment(\.modelContext) var modelContext
 
     var initialMiner: Miner
 
@@ -62,12 +67,19 @@ struct MinerHashOpsCompactTile: View {
     
     @State
     var hasAvailableFirmwareUpdate: Bool = false
-    
+
     @State
     var availableFirmwareRelease: FirmwareRelease? = nil
 
+    @State
+    var showRetryMinerDialog: Bool = false
+
     var mostRecentUpdate: MinerUpdate? {
         latestUpdates.first ?? nil
+    }
+
+    var isMinerOffline: Bool {
+        return currentMiner.first?.isOffline ?? miner.isOffline
     }
     var asicTempText: String {
         if let temp = mostRecentUpdate?.temp {
@@ -96,8 +108,24 @@ struct MinerHashOpsCompactTile: View {
             case .success:
                 showRestartSuccessDialog = true
             case .failure(let error):
-                print("Failed to restart client: \(String(describing: error))")
+                logger.warning("Failed to restart client: \(String(describing: error))")
             }
+        }
+    }
+
+    func retryOfflineMiner() {
+        Task {
+            // Reset the timeout error counter
+            miner.consecutiveTimeoutErrors = 0
+
+            logger.debug("🔄 Retrying offline miner \(miner.hostName) (\(miner.ipAddress)) - resetting error counter and triggering scan")
+
+            // Trigger a network scan to find the miner (in case IP changed)
+            if let scanner = newMinerScanner {
+                await scanner.rescanDevicesStreaming()
+            }
+
+            showRetryMinerDialog = true
         }
     }
 
@@ -124,24 +152,19 @@ struct MinerHashOpsCompactTile: View {
             availableFirmwareRelease = nil
             return
         }
-        
-        do {
-            // Reset state before checking
-            hasAvailableFirmwareUpdate = false
-            availableFirmwareRelease = nil
-            
-            // Check for available firmware in a safer way
-            let latestRelease = await firmwareViewModel.getLatestFirmwareRelease(for: miner.minerType)
-            let hasUpdate = await firmwareViewModel.hasFirmwareUpdate(minerVersion: currentVersion, minerType: miner.minerType)
-            
-            // Only update if we successfully got results
-            availableFirmwareRelease = latestRelease
-            hasAvailableFirmwareUpdate = hasUpdate
-        } catch {
-            print("Error checking firmware update for \(miner.hostName): \(error)")
-            hasAvailableFirmwareUpdate = false
-            availableFirmwareRelease = nil
-        }
+
+
+        // Reset state before checking
+        hasAvailableFirmwareUpdate = false
+        availableFirmwareRelease = nil
+
+        // Check for available firmware in a safer way
+        let latestRelease = await firmwareViewModel.getLatestFirmwareRelease(for: miner.minerType)
+        let hasUpdate = await firmwareViewModel.hasFirmwareUpdate(minerVersion: currentVersion, minerType: miner.minerType)
+
+        // Only update if we successfully got results
+        availableFirmwareRelease = latestRelease
+        hasAvailableFirmwareUpdate = hasUpdate
     }
 
     var body: some View {
@@ -197,13 +220,15 @@ struct MinerHashOpsCompactTile: View {
         .padding(12)
         .overlay(alignment: .topLeading) {
             MinerIPHeaderView(
-                miner: miner, 
+                miner: miner,
                 isMinerOnParasite: isMinerOnParasite(),
                 hasFirmwareUpdate: hasAvailableFirmwareUpdate,
                 hasVersionMismatch: hasVersionMismatch,
+                isOffline: isMinerOffline,
                 onFirmwareUpdateTap: {
                     showFirmwareReleaseNotes = true
-                }
+                },
+                onOfflineRetryTap: retryOfflineMiner
             )
         }
         .overlay(
@@ -225,6 +250,13 @@ struct MinerHashOpsCompactTile: View {
                     showFirmwareReleaseNotes = false
                 }
             }
+        }
+        .alert("Retrying Connection", isPresented: $showRetryMinerDialog) {
+            Button("OK", role: .cancel) {
+                showRetryMinerDialog = false
+            }
+        } message: {
+            Text("Attempting to reconnect to \(miner.hostName). Scanning network for miner...")
         }
         .task {
             await checkForFirmwareUpdate()
@@ -283,18 +315,68 @@ struct ParasitePoolIndicatorView: View {
 
 struct FirmwareUpdateIndicatorView: View {
     let onTap: () -> Void
-    
+
     var body: some View {
         Button(action: onTap) {
             Image(systemName: "arrow.up.circle.fill")
                 .resizable()
                 .frame(width: 12, height: 12)
+                .padding(1)
                 .foregroundColor(.purple)
                 .background(Color.white)
+
                 .clipShape(Circle())
         }
         .buttonStyle(.plain)
         .help("Firmware update available - tap to view")
+    }
+}
+
+struct OfflineIndicatorView: View {
+    let onTap: () -> Void
+    let text: String?
+
+    init(text: String? = nil, onTap: @escaping () -> Void) {
+        self.onTap = onTap
+        self.text = text
+    }
+
+    var body: some View {
+        if let text = text {
+            Button(action: onTap) {
+                HStack(spacing: 4) {
+                    Image(systemName: "wifi.exclamationmark.circle.fill")
+                        .resizable()
+                        .frame(width: 12, height: 12)
+                        .font(.caption)
+                    Text(text)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .foregroundStyle(.white)
+                .background(.red)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Miner is offline - tap to retry connection")
+        } else {
+            Button(action: onTap) {
+                HStack {
+                    Image(systemName: "wifi.exclamationmark.circle.fill")
+                        .resizable()
+                        .frame(width: 12, height: 12)
+//                        .padding(1)
+//                        .foregroundColor(.white)
+//                        .background(Color.red)
+                        .clipShape(Circle())
+                }
+            }
+            .buttonStyle(.plain)
+            .clipShape(Capsule())
+            .help("Miner is offline - tap to retry connection")
+        }
     }
 }
 
@@ -318,21 +400,28 @@ struct MinerIPHeaderView: View {
     let isMinerOnParasite: Bool
     let hasFirmwareUpdate: Bool
     let hasVersionMismatch: Bool
+    let isOffline: Bool
     let onFirmwareUpdateTap: () -> Void
+    let onOfflineRetryTap: () -> Void
 
     var body: some View {
         HStack {
-            HStack {
+            HStack(spacing: 6) {
                 Link(miner.ipAddress, destination: URL(string: "http://\(miner.ipAddress)/")!)
                     .font(.subheadline)
                     .underline()
                     .bold()
-                    .padding(.vertical, 2)
-                    .padding(.horizontal, 6)
                     .foregroundStyle(.black.opacity(0.9))
-                    .background(colorScheme == .light ? Color.black.opacity(0.4) : Color.gray)
                     .pointerStyle(.link)
+
+                // Show offline indicator next to IP address
+                if isOffline {
+                    OfflineIndicatorView(onTap: onOfflineRetryTap)
+                }
             }
+            .padding(.vertical, 2)
+            .padding(.horizontal, 6)
+            .background(isOffline ? .red.opacity(0.7) : colorScheme == .light ? Color.black.opacity(0.4) : Color.gray)
             .clipShape(
                 .rect(
                     topLeadingRadius: 0,
@@ -341,7 +430,8 @@ struct MinerIPHeaderView: View {
                     topTrailingRadius: 0
                 )
             )
-            .help(Text("Open in Browser"))
+            .help(Text(isOffline ? "Miner is offline" : "Open in Browser"))
+
             if hasVersionMismatch {
                 VersionMismatchWarningView()
                     .padding(.leading, 1)
@@ -357,7 +447,8 @@ struct MinerIPHeaderView: View {
                 if isMinerOnParasite {
                     ParasitePoolIndicatorView()
                 }
-                
+
+                // Show firmware update indicator if available (and not offline)
                 if hasFirmwareUpdate {
                     FirmwareUpdateIndicatorView(onTap: onFirmwareUpdateTap)
                 }
@@ -396,4 +487,3 @@ struct TempuratureCapsuleView: View {
         .clipShape(.capsule)
     }
 }
-

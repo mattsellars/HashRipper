@@ -8,11 +8,17 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import os.log
 
 struct MinerHashOpsSummaryView: View  {
+    var logger: Logger {
+        HashRipperLogger.shared.loggerForCategory("MinerHashOpsSummaryView")
+    }
+
     @Environment(\.minerClientManager) var minerClientManager
     @Environment(\.modelContext) private var modelContext
-    
+    @Environment(\.newMinerScanner) var newMinerScanner
+
     var miner: Miner
 
     @State private var mostRecentUpdate: MinerUpdate?
@@ -29,6 +35,9 @@ struct MinerHashOpsSummaryView: View  {
 
     @State
     var showRestartFailedDialog: Bool = false
+
+    @State
+    var showRetryMinerDialog: Bool = false
 
 
     private func loadLatestUpdate() {
@@ -92,8 +101,24 @@ struct MinerHashOpsSummaryView: View  {
             case .success:
                 showRestartSuccessDialog = true
             case .failure(let error):
-                print("Failed to restart client: \(String(describing: error))")
+                logger.warning("Failed to restart client: \(String(describing: error))")
             }
+        }
+    }
+
+    func retryOfflineMiner() {
+        Task {
+            // Reset the timeout error counter
+            miner.consecutiveTimeoutErrors = 0
+
+            logger.debug("🔄 Retrying offline miner \(miner.hostName) (\(miner.ipAddress)) - resetting error counter and triggering scan")
+
+            // Trigger a network scan to find the miner (in case IP changed)
+            if let scanner = newMinerScanner {
+                await scanner.rescanDevicesStreaming()
+            }
+
+            showRetryMinerDialog = true
         }
     }
 
@@ -106,10 +131,18 @@ struct MinerHashOpsSummaryView: View  {
                     VStack(alignment: .leading, spacing: 12) {
                         // Hostname and IP
                         HStack(alignment: .center, spacing: 12) {
-                            VStack(alignment: .leading) {
-                                Text(miner.hostName)
-                                    .font(.largeTitle)
-                                    .fontWeight(.medium)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8,) {
+                                    Text(miner.hostName)
+                                        .font(.largeTitle)
+                                        .fontWeight(.medium)
+
+                                    // Offline badge
+                                    if miner.isOffline {
+                                        OfflineIndicatorView(text: "Offline", onTap: retryOfflineMiner)
+                                    }
+                                }
+
                                 Text(miner.minerDeviceDisplayName)
                                     .font(.caption)
                                     .fontWeight(.medium)
@@ -316,6 +349,13 @@ struct MinerHashOpsSummaryView: View  {
         }
         .alert(isPresented: $showRestartFailedDialog) {
             Alert(title: Text("⚠️ Miner restart"), message: Text("Request to restart miner \(miner.hostName) failed."))
+        }
+        .alert("Retrying Connection", isPresented: $showRetryMinerDialog) {
+            Button("OK", role: .cancel) {
+                showRetryMinerDialog = false
+            }
+        } message: {
+            Text("Attempting to reconnect to \(miner.hostName). Scanning network for miner...")
         }
     }
 }

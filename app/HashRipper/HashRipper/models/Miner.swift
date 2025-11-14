@@ -19,6 +19,8 @@ final class Miner {
     public var deviceModel: String?
     public var macAddress: String
 
+    // Offline detection - track consecutive timeout errors
+    public var consecutiveTimeoutErrors: Int = 0
 
     public init(
         hostName: String,
@@ -33,5 +35,6 @@ final class Miner {
         self.boardVersion = boardVersion
         self.deviceModel = deviceModel
         self.macAddress = macAddress
+        self.consecutiveTimeoutErrors = 0
     }
 }

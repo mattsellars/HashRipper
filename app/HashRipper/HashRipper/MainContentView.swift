@@ -8,10 +8,15 @@
 import SwiftUI
 import SwiftData
 import AppKit
+import os.log
 
 let kToolBarItemSize = CGSize(width: 44, height: 44)
 
 struct MainContentView: View {
+    var logger: Logger {
+        HashRipperLogger.shared.loggerForCategory("MainContentView")
+    }
+
     @Environment(\.openWindow) private var openWindow
     @Environment(\.modelContext) private var modelContext
     @Environment(\.newMinerScanner) private var deviceRefresher
@@ -26,6 +31,7 @@ struct MainContentView: View {
     @State private var showAddMinerSheet: Bool = false
     @State private var showProfileRolloutSheet: Bool = false
     @State private var showMinerCharts: Bool = false
+    @State private var offlineMinersCount: Int = 0
 
     var body: some View {
         NavigationSplitView(
@@ -78,7 +84,28 @@ struct MainContentView: View {
                 .navigationSplitViewColumnWidth(ideal: 58)
         }, detail: {
             VStack(spacing: 0) {
-                HStack {
+                HStack(spacing: 12) {
+                    // Offline miners reconnect button
+                    if sideBarSelection == "hashops" && offlineMinersCount > 0 {
+                        Button(action: reconnectOfflineMiners) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "wifi.exclamationmark")
+                                    .font(.caption)
+                                Text("Reconnect \(offlineMinersCount) Offline Miner\(offlineMinersCount == 1 ? "" : "s")")
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .foregroundStyle(.white)
+                            .background(.red)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .help("Reset offline miners and scan network to reconnect")
+                        .transition(.opacity)
+                    }
+
                     // Scanning indicator on the left
                     if sideBarSelection == "hashops" && deviceRefresher?.isScanning == true {
                         HStack(spacing: 4) {
@@ -91,7 +118,7 @@ struct MainContentView: View {
                         }
                         .transition(.opacity)
                     }
-                    
+
                     Spacer()
                     switch (sideBarSelection) {
                     case "hashops":
@@ -110,6 +137,7 @@ struct MainContentView: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.3), value: deviceRefresher?.isScanning)
+                .animation(.easeInOut(duration: 0.3), value: offlineMinersCount)
                 .padding(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                 .background(.thickMaterial)
                 .zIndex(2)
@@ -133,6 +161,12 @@ struct MainContentView: View {
                         }
         .task {
             deviceRefresher?.initializeDeviceScanner()
+
+            // Update offline count periodically (every 10 seconds)
+            while !Task.isCancelled {
+                updateOfflineCount()
+                try? await Task.sleep(nanoseconds: 10_000_000_000) // 10 seconds
+            }
         }
         .sheet(isPresented: $showAddMinerSheet) {
             NewMinerSetupWizardView(onCancel: {
@@ -171,5 +205,52 @@ struct MainContentView: View {
         openWindow(id: MinerWebsocketRecordingScreen.windowGroupId)
     }
 
+    private func updateOfflineCount() {
+        Task {
+            let count = await database.withModelContext { context in
+                do {
+                    let miners = try context.fetch(FetchDescriptor<Miner>())
+                    return miners.filter { $0.isOffline }.count
+                } catch {
+                    logger.error("Failed to fetch offline count: \(String(describing: error))")
+                    return 0
+                }
+            }
+            await MainActor.run {
+                offlineMinersCount = count
+            }
+        }
+    }
+
+    private func reconnectOfflineMiners() {
+        Task {
+            logger.info("🔄 Reconnecting \(self.offlineMinersCount) offline miner(s)")
+
+            // Reset error counters for offline miners
+            await database.withModelContext { context in
+                do {
+                    let miners = try context.fetch(FetchDescriptor<Miner>())
+                    let offlineMiners = miners.filter { $0.isOffline }
+
+                    for miner in offlineMiners {
+                        logger.debug("  - Resetting \(miner.hostName) (\(miner.ipAddress)) - had \(miner.consecutiveTimeoutErrors) timeout errors")
+                        miner.consecutiveTimeoutErrors = 0
+                    }
+
+                    try context.save()
+                } catch {
+                    logger.error("Failed to reset offline miners: \(String(describing: error))")
+                }
+            }
+
+            // Trigger a network scan to find the miners
+            if let scanner = deviceRefresher {
+                await scanner.rescanDevicesStreaming()
+            }
+
+            // Update count after reset
+            updateOfflineCount()
+        }
+    }
 
 }

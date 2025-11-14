@@ -10,6 +10,7 @@ import Foundation
 import SwiftData
 import SwiftUI
 import Cocoa
+import os.log
 
 extension Notification.Name {
     static let minerUpdateInserted = Notification.Name("minerUpdateInserted")
@@ -24,9 +25,15 @@ actor MinerRefreshScheduler {
     private let watchDog: MinerWatchDog
     private let clientManager: MinerClientManager
     private var refreshTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
     private var isPaused: Bool = false
     private var isBackgroundMode: Bool = false
     private var shouldStopAfterCurrentUpdate: Bool = false
+    private var hasScheduledRetry: Bool = false
+    private let logger = HashRipperLogger.shared.loggerForCategory("MinerRefreshScheduler")
+
+    // Time to wait before retrying offline miners (in seconds)
+    private static let OFFLINE_RETRY_INTERVAL: TimeInterval = 180.0 // 3 minutes
     
     init(ipAddress: IPAddress, database: Database, watchDog: MinerWatchDog, clientManager: MinerClientManager) {
         self.ipAddress = ipAddress
@@ -46,14 +53,19 @@ actor MinerRefreshScheduler {
     func pause() {
         isPaused = true
         shouldStopAfterCurrentUpdate = true
+        // Cancel any pending retry
+        retryTask?.cancel()
+        retryTask = nil
+        hasScheduledRetry = false
         // Don't cancel the task immediately - let current update finish
         print("🔄 Gracefully pausing miner refresh for \(ipAddress) - will stop after current update")
     }
-    
+
     func resume() {
         guard isPaused else { return }
         isPaused = false
         shouldStopAfterCurrentUpdate = false
+        hasScheduledRetry = false
         print("▶️ Resuming miner refresh for \(ipAddress)")
 
         // Start refreshing if no task is running
@@ -78,8 +90,51 @@ actor MinerRefreshScheduler {
         isPaused = true
         refreshTask?.cancel()
         refreshTask = nil
+        retryTask?.cancel()
+        retryTask = nil
+        hasScheduledRetry = false
     }
-    
+
+    private func scheduleOfflineRetry() {
+        // Don't schedule multiple retries
+        guard !hasScheduledRetry else { return }
+
+        hasScheduledRetry = true
+        logger.info("⏰ Scheduling retry for offline miner \(self.ipAddress) in 3 minutes")
+
+        retryTask = Task { [weak self] in
+            guard let self = self else { return }
+
+            // Wait 3 minutes
+            try? await Task.sleep(nanoseconds: UInt64(MinerRefreshScheduler.OFFLINE_RETRY_INTERVAL * 1_000_000_000))
+
+            // Check if we were cancelled
+            guard !Task.isCancelled else { return }
+
+            // Reset the error counter to trigger a retry
+            await self.database.withModelContext { [ipAddress] context in
+                do {
+                    let miners = try context.fetch(FetchDescriptor<Miner>())
+                    if let miner = miners.first(where: { $0.ipAddress == ipAddress }) {
+                        self.logger.info("🔄 Auto-retrying offline miner \(miner.hostName) (\(miner.ipAddress))")
+                        miner.consecutiveTimeoutErrors = 0
+                        try context.save()
+                    }
+                } catch {
+                    self.logger.error("Failed to reset offline miner: \(String(describing: error))")
+                }
+            }
+
+            // Reset flag so we can schedule another retry if it fails again
+            await self.resetRetryFlag()
+        }
+    }
+
+    private func resetRetryFlag() {
+        hasScheduledRetry = false
+        retryTask = nil
+    }
+
     private func refreshLoop() async {
         while !isPaused && !Task.isCancelled {
             // Check if we should stop gracefully after current update
@@ -87,6 +142,44 @@ actor MinerRefreshScheduler {
                 print("🛑 Gracefully stopping refresh loop for \(ipAddress)")
                 refreshTask = nil
                 return
+            }
+
+            // Check if miner is offline and skip refresh if so
+            let (minerIsOffline, errorCount) = await database.withModelContext { [ipAddress] context in
+                do {
+                    let miners = try context.fetch(FetchDescriptor<Miner>())
+                    guard let miner = miners.first(where: { $0.ipAddress == ipAddress }) else {
+                        return (false, 0)
+                    }
+                    return (miner.isOffline, miner.consecutiveTimeoutErrors)
+                } catch {
+                    // If we can't fetch, assume not offline to be safe
+                    return (false, 0)
+                }
+            }
+
+            if minerIsOffline {
+                // Miner is offline, skip refresh and wait
+                logger.debug("⏸️ Skipping refresh for offline miner \(self.ipAddress) (error count: \(errorCount))")
+
+                // Schedule an automatic retry if not already scheduled
+                scheduleOfflineRetry()
+
+                let interval = isBackgroundMode ? MinerClientManager.REFRESH_INTERVAL * 2 : MinerClientManager.REFRESH_INTERVAL
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                continue
+            }
+
+            // Debug: Log that we're about to make a request for an online miner
+            if errorCount > 0 {
+                logger.debug("🔄 Making request for \(self.ipAddress) (error count: \(errorCount), threshold: \(AppSettings.shared.offlineThreshold))")
+            }
+
+            // Miner is online - reset retry scheduling
+            if hasScheduledRetry {
+                retryTask?.cancel()
+                hasScheduledRetry = false
+                retryTask = nil
             }
 
             // Get client for this miner
@@ -107,6 +200,11 @@ actor MinerRefreshScheduler {
                 MinerClientManager.pendingRefreshLock.perform(guardedTask: {
                     MinerClientManager.pendingRefreshIPs.insert(ipAddress)
                 })
+
+                // Log request start for miners with errors
+                if errorCount > 0 {
+                    logger.debug("📡 Starting request for \(self.ipAddress)")
+                }
 
                 // Perform the refresh - this is protected from cancellation
                 let update = await client.getSystemInfo()
@@ -135,17 +233,20 @@ actor MinerRefreshScheduler {
 
 @Observable
 class MinerClientManager {
+    private let logger = HashRipperLogger.shared.loggerForCategory("MinerClientManager")
     private let cleanupService: MinerUpdateCleanupService
 
     // Shared reference for static access
     private static var sharedCleanupService: MinerUpdateCleanupService?
 //    static let MAX_FAILURE_COUNT: Int = 5
-    static var REFRESH_INTERVAL: TimeInterval { 
-        AppSettings.shared.minerRefreshInterval 
+    static var REFRESH_INTERVAL: TimeInterval {
+        AppSettings.shared.minerRefreshInterval
     }
-    static var BACKGROUND_REFRESH_INTERVAL: TimeInterval { 
-        AppSettings.shared.backgroundPollingInterval 
+    static var BACKGROUND_REFRESH_INTERVAL: TimeInterval {
+        AppSettings.shared.backgroundPollingInterval
     }
+    // Fixed timeout for detecting offline miners (shorter than refresh interval)
+    static let REQUEST_TIMEOUT: TimeInterval = 10.0
 
     // Track pending refresh requests to prevent pileup
     static var pendingRefreshIPs: Set<IPAddress> = []
@@ -199,6 +300,34 @@ class MinerClientManager {
     private func setupMinerSchedulers() {
         // Initialize schedulers for existing miners
         refreshClientInfo()
+
+        // Reset offline miners on app launch to retry connection
+        resetOfflineMiners()
+    }
+
+    @MainActor
+    private func resetOfflineMiners() {
+        Task {
+            await database.withModelContext { context in
+                do {
+                    let allMiners: [Miner] = try context.fetch(FetchDescriptor())
+                    let offlineMiners = allMiners.filter { $0.isOffline }
+
+                    if !offlineMiners.isEmpty {
+                        self.logger.info("🔄 Found \(offlineMiners.count) offline miner(s) on app launch - resetting error counters to retry connection")
+
+                        for miner in offlineMiners {
+                            self.logger.debug("  - Resetting \(miner.hostName) (\(miner.ipAddress)) - had \(miner.consecutiveTimeoutErrors) timeout errors")
+                            miner.consecutiveTimeoutErrors = 0
+                        }
+
+                        try context.save()
+                    }
+                } catch {
+                    self.logger.error("Failed to reset offline miners: \(String(describing: error))")
+                }
+            }
+        }
     }
     
     @MainActor
@@ -321,8 +450,8 @@ class MinerClientManager {
             var newClients: [AxeOSClient] = []
             if !newMinerIps.isEmpty {
                 let sessionConfig = URLSessionConfiguration.default
-                sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL
-                sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
+                sessionConfig.timeoutIntervalForRequest = MinerClientManager.REQUEST_TIMEOUT
+                sessionConfig.timeoutIntervalForResource = MinerClientManager.REQUEST_TIMEOUT * 2
                 sessionConfig.waitsForConnectivity = false
 //                sessionConfig.allowsCellularAccess = false
 //                sessionConfig.allowsExpensiveNetworkAccess = false
@@ -368,7 +497,7 @@ class MinerClientManager {
             // Create clients for new miners
             var newClients: [AxeOSClient] = []
             let sessionConfig = URLSessionConfiguration.default
-            sessionConfig.timeoutIntervalForRequest = MinerClientManager.REFRESH_INTERVAL * 2
+            sessionConfig.timeoutIntervalForRequest = MinerClientManager.REQUEST_TIMEOUT
             sessionConfig.timeoutIntervalForResource = MinerClientManager.REFRESH_INTERVAL - 1
             sessionConfig.waitsForConnectivity = false
 //            sessionConfig.allowsCellularAccess = false
@@ -467,6 +596,9 @@ class MinerClientManager {
                 
                 switch (minerUpdate.response) {
                 case .success(let info):
+                    // Reset timeout error counter on successful update
+                    miner.consecutiveTimeoutErrors = 0
+
                     let updateModel = MinerUpdate(
                         miner: miner,
                         hostname: info.hostname,
@@ -495,13 +627,36 @@ class MinerClientManager {
                         miner.hostName = info.hostname
                     }
                     context.insert(updateModel)
-                    
+
                     // Post notification for efficient UI updates
                     postMinerUpdateNotification(minerMacAddress: miner.macAddress)
 
                     // Mark that we should check watchdog after database operations complete
                     shouldCheckWatchdog = true
                 case .failure(let error):
+                    let errorCode = (error as NSError).code
+                    let logger = HashRipperLogger.shared.loggerForCategory("MinerClientManager")
+
+                    // Check error type
+                    // -1001 = NSURLErrorTimedOut (timeout - increment counter)
+                    // -1004 = NSURLErrorCannotConnectToHost (connection refused - immediate offline)
+                    if errorCode == -1004 {
+                        // Connection refused/failed - mark as offline immediately
+                        let threshold = AppSettings.shared.offlineThreshold
+                        miner.consecutiveTimeoutErrors = threshold
+                        logger.warning("🔴 Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE immediately - connection refused (error -1004)")
+                    } else if errorCode == -1001 {
+                        // Timeout - increment counter
+                        miner.consecutiveTimeoutErrors += 1
+
+                        if miner.isOffline {
+                            logger.warning("⚠️ Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE after \(miner.consecutiveTimeoutErrors) consecutive timeout errors")
+                        }
+                    } else {
+                        // Other error types, reset counter
+                        miner.consecutiveTimeoutErrors = 0
+                    }
+
                     // Find the most recent successful update to copy its values
                     let macAddress = miner.macAddress
                     var previousUpdateDescriptor = FetchDescriptor<MinerUpdate>(
@@ -563,7 +718,11 @@ class MinerClientManager {
                     context.insert(updateModel)
                     postMinerUpdateNotification(minerMacAddress: miner.macAddress)
 
-                    print("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
+                    // Only log error if miner is not offline (to avoid spam for offline miners)
+                    if !miner.isOffline {
+                        let logger = HashRipperLogger.shared.loggerForCategory("MinerClientManager")
+                        logger.error("ERROR: Miner update for \(miner.hostName) failed with error: \(String(describing: error))")
+                    }
                 }
                 // Trigger cleanup check if this miner might have exceeded threshold
                 let macAddress = miner.macAddress // Capture MAC address while in correct context

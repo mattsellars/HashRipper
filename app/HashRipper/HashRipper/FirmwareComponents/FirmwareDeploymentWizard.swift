@@ -491,7 +491,9 @@ private struct MinerSelectionScreen: View {
     
     private var compatibleMiners: [Miner] {
         guard let deploymentManager = model.deploymentManager else { return [] }
+        // Filter out offline miners from compatible miners list
         return deploymentManager.getCompatibleMiners(for: model.firmwareRelease, from: allMiners)
+            .filter { !$0.isOffline }
     }
     
     private var selectedMiners: [Miner] {
