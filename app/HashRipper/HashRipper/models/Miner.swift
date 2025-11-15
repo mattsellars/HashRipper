@@ -10,13 +10,12 @@ import SwiftData
 @Model
 final class Miner {
     public var hostName: String
-
-    @Attribute(.unique)
     public var ipAddress: String
-
     public var ASICModel: String
     public var boardVersion: String?
     public var deviceModel: String?
+
+    @Attribute(.unique)
     public var macAddress: String
 
     // Offline detection - track consecutive timeout errors
