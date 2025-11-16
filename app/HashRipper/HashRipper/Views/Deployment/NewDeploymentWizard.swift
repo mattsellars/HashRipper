@@ -147,7 +147,8 @@ struct NewDeploymentWizard: View {
                 ConfirmStageView(model: model)
             }
         }
-        .padding(24)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
     }
 
     private var navigationView: some View {
@@ -252,7 +253,7 @@ struct ConfigurationStageView: View {
     @Bindable var model: NewDeploymentWizardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 16) {
             // Firmware info
             firmwareInfoView
 
@@ -275,26 +276,16 @@ struct ConfigurationStageView: View {
 
     private var firmwareInfoView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Firmware Release")
-                .font(.headline)
-
             HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(model.firmwareRelease.name)
-                        .font(.title3)
-                        .fontWeight(.semibold)
-
-                    Text("Version \(model.firmwareRelease.versionTag)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text("Device: \(model.firmwareRelease.device)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
+                Text("Firmware Release")
+                    .font(.headline)
+                Text(model.firmwareRelease.name)
+                    .font(.title3)
+                    .fontWeight(.semibold)
             }
+            Text("Device: \(model.firmwareRelease.device)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
