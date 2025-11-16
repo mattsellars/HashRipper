@@ -142,6 +142,10 @@ struct NewMinerSetupWizardView: View {
                         VStack {
                             if connectedDevice != nil, let minerInfo = connectedDevice?.info {
                                 Image.icon(forMinerType: minerInfo.minerType)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 100, height: 100)
+
                                 Text(minerInfo.minerDeviceDisplayName)
                                     .font(.title3)
                             } else {
