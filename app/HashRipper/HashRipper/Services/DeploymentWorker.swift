@@ -7,6 +7,7 @@
 import Foundation
 import SwiftData
 import AxeOSClient
+import UserNotifications
 
 actor DeploymentWorker {
     let deploymentId: PersistentIdentifier
@@ -398,12 +399,54 @@ actor DeploymentWorker {
         try? modelContext.save()
 
         if deployment.isFinished {
-            // Notify completion
+            // Send completion notifications with fresh data
+            await MainActor.run {
+                DeploymentNotificationHelper.postDeploymentCompleted(deployment)
+            }
+
+            // Send local notification with accurate counts
+            await sendCompletionNotification(
+                versionTag: deployment.firmwareRelease?.versionTag ?? "Unknown",
+                successCount: deployment.successCount,
+                failureCount: deployment.failureCount
+            )
+
+            // Notify store to clean up worker
             await onComplete()
         } else {
             // Post update notification
             await MainActor.run {
                 DeploymentNotificationHelper.postDeploymentUpdated(deployment)
+            }
+        }
+    }
+
+    private func sendCompletionNotification(versionTag: String, successCount: Int, failureCount: Int) async {
+        await MainActor.run {
+            let content = UNMutableNotificationContent()
+            content.title = "Deployment Complete"
+
+            if failureCount == 0 {
+                content.body = "Successfully deployed \(versionTag) to \(successCount) miner\(successCount == 1 ? "" : "s")"
+                content.sound = .default
+            } else if successCount == 0 {
+                content.body = "Failed to deploy \(versionTag) to \(failureCount) miner\(failureCount == 1 ? "" : "s")"
+                content.sound = .defaultCritical
+            } else {
+                content.body = "Deployed \(versionTag): \(successCount) succeeded, \(failureCount) failed"
+                content.sound = .default
+            }
+
+            let request = UNNotificationRequest(
+                identifier: UUID().uuidString,
+                content: content,
+                trigger: nil
+            )
+
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("❌ Failed to send notification: \(error)")
+                }
             }
         }
     }

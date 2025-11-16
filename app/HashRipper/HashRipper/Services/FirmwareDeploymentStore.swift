@@ -6,7 +6,6 @@
 //
 import Foundation
 import SwiftData
-import UserNotifications
 
 final class FirmwareDeploymentStore {
     static let shared = FirmwareDeploymentStore()
@@ -343,32 +342,9 @@ final class FirmwareDeploymentStore {
         // Clean up state holder (weak reference will become nil)
         removeStateHolder(for: deploymentId)
 
-        // Fetch deployment data before reloading (which might invalidate it)
-        let deployment = await fetchDeployment(id: deploymentId)
-        let notificationData: (versionTag: String, successCount: Int, failureCount: Int)? = deployment.map { d in
-            (
-                versionTag: d.firmwareRelease?.versionTag ?? "Unknown",
-                successCount: d.successCount,
-                failureCount: d.failureCount
-            )
-        }
-
-        // Reload deployments
+        // Reload deployments to get fresh data from database
+        // Note: Worker already sent completion notifications with accurate counts
         await loadDeployments()
-
-        // Post notification - only if deployment still exists
-        if let deployment = deployment {
-            await MainActor.run {
-                DeploymentNotificationHelper.postDeploymentCompleted(deployment)
-            }
-
-            // Send local notification with captured data
-            if let data = notificationData {
-                await sendCompletionNotification(versionTag: data.versionTag, successCount: data.successCount, failureCount: data.failureCount)
-            }
-        } else {
-            print("⚠️ Deployment \(deploymentId) no longer exists (was deleted)")
-        }
     }
 
     // MARK: - Orphaned Deployment Cleanup
@@ -406,34 +382,4 @@ final class FirmwareDeploymentStore {
 
     // MARK: - Notifications
 
-    private func sendCompletionNotification(versionTag: String, successCount: Int, failureCount: Int) async {
-        // Request notification permission if not already granted
-        let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-
-        if settings.authorizationStatus != .authorized {
-            // Request permission
-            let granted = try? await center.requestAuthorization(options: [.alert, .sound])
-            guard granted == true else { return }
-        }
-
-        // Create notification content
-        let content = UNMutableNotificationContent()
-        content.title = "Firmware Deployment Complete"
-        content.body = "Firmware \(versionTag): \(successCount) succeeded, \(failureCount) failed"
-        content.sound = .default
-
-        // Create trigger (immediate)
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-
-        // Create request
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: trigger
-        )
-
-        // Schedule notification
-        try? await center.add(request)
-    }
 }
