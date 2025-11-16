@@ -19,6 +19,7 @@ struct HashRipperApp: App {
     var firmwareDeploymentManager: FirmwareDeploymentManager
     var statusBarManager = StatusBarManager()
     var statsAggregator: MinerStatsAggregator
+    var deploymentStore = FirmwareDeploymentStore.shared
 
     init() {
         nw_tls_create_options()
@@ -69,6 +70,10 @@ struct HashRipperApp: App {
                 .onAppear {
                     // Turn off this terrible design choice https://stackoverflow.com/questions/65460457/how-do-i-disable-the-show-tab-bar-menu-option-in-swiftui
                     let _ = NSApplication.shared.windows.map { $0.tabbingMode = .disallowed }
+
+                    // Set up deployment store dependencies
+                    deploymentStore.clientManager = minerClientManager
+                    deploymentStore.downloadsManager = firmwareDownloadsManager
 
                     // Start status bar immediately for testing
                     print("🚀 App onAppear - calling showStatusBar() immediately")
@@ -146,7 +151,7 @@ struct HashRipperApp: App {
         .firmwareDownloadsManager(firmwareDownloadsManager)
         .firmwareDeploymentManager(firmwareDeploymentManager)
         .newMinerScanner(newMinerScanner)
-        
+
 //        .windowStyle(HiddenTitleBarWindowStyle())
 
 //        WindowGroup("New Profile", id: "new-profile") {
@@ -172,7 +177,9 @@ struct HashRipperApp: App {
         .firmwareDownloadsManager(firmwareDownloadsManager)
         .firmwareDeploymentManager(firmwareDeploymentManager)
         .newMinerScanner(newMinerScanner)
-        
+
+
+
         Window("Firmware Downloads", id: ActiveFirmwareDownloadsView.windowGroupId) {
             ActiveFirmwareDownloadsView()
                 .frame(minWidth: 600, minHeight: 400)
@@ -181,7 +188,14 @@ struct HashRipperApp: App {
         .database(SharedDatabase.shared.database)
         .firmwareDownloadsManager(firmwareDownloadsManager)
         .defaultSize(width: 600, height: 400)
-        
+
+        Window("Firmware Deployments", id: DeploymentListView.windowGroupId) {
+            DeploymentListView()
+        }
+        .modelContainer(SharedDatabase.shared.modelContainer)
+        .database(SharedDatabase.shared.database)
+        .defaultSize(width: 900, height: 700)
+
         Window("WatchDog Actions", id: MinerWatchDogActionsView.windowGroupId) {
             MinerWatchDogActionsView()
         }
@@ -201,6 +215,8 @@ struct HashRipperApp: App {
             AboutView()
         }
         .windowResizability(.contentSize)
+
+
 
     }
 

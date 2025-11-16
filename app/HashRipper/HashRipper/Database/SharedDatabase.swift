@@ -16,10 +16,12 @@ func createModelContainer() -> ModelContainer {
         MinerConnectionStatus.self,
         FirmwareRelease.self,
         WatchDogActionLog.self,
+        FirmwareDeployment.self,
+        MinerFirmwareDeployment.self,
     ])
     let persistedModelConfiguration = ModelConfiguration(
         "ProfilesAndConfig",
-        schema: Schema([MinerProfileTemplate.self, MinerWifiConnection.self, WatchDogActionLog.self, MinerUpdate.self, Miner.self,FirmwareRelease.self]),
+        schema: Schema([MinerProfileTemplate.self, MinerWifiConnection.self, WatchDogActionLog.self, MinerUpdate.self, Miner.self, FirmwareRelease.self, FirmwareDeployment.self, MinerFirmwareDeployment.self]),
         isStoredInMemoryOnly: false
     )
     let ephemeralModelConfiguration = ModelConfiguration(

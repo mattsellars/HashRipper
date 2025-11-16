@@ -135,6 +135,7 @@ struct ReleaseInfoView: View {
     let firmwareRelease: FirmwareRelease
     @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager!
     @State private var showingDeploymentWizard = false
+    @State private var settings = AppSettings.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -221,7 +222,11 @@ struct ReleaseInfoView: View {
         )
         .contentShape(Rectangle())
         .sheet(isPresented: $showingDeploymentWizard) {
-            FirmwareDeploymentWizard(firmwareRelease: firmwareRelease)
+            if settings.usePersistentDeployments {
+                NewDeploymentWizard(firmwareRelease: firmwareRelease)
+            } else {
+                FirmwareDeploymentWizard(firmwareRelease: firmwareRelease)
+            }
         }
     }
     

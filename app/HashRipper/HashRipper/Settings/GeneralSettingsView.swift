@@ -14,6 +14,7 @@ struct GeneralSettingsView: View {
     @State private var backgroundPollingInterval: Double = 10.0
     @State private var isStatusBarEnabled: Bool = true
     @State private var offlineThreshold: Int = 5
+    @State private var usePersistentDeployments: Bool = false
     
     var body: some View {
         Form {
@@ -145,6 +146,24 @@ struct GeneralSettingsView: View {
                     Divider()
 
                     VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Use New Deployment System (Beta)")
+                                .font(.headline)
+                            Spacer()
+                            Toggle("", isOn: $usePersistentDeployments)
+                                .onChange(of: usePersistentDeployments) { _, newValue in
+                                    settings.usePersistentDeployments = newValue
+                                }
+                        }
+
+                        Text("Enable the new persistent deployment system with background processing and deployment history. Deployments will continue even if you quit the app.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Performance Tips")
                             .font(.headline)
                         
@@ -177,6 +196,7 @@ struct GeneralSettingsView: View {
             backgroundPollingInterval = settings.backgroundPollingInterval
             isStatusBarEnabled = settings.isStatusBarEnabled
             offlineThreshold = settings.offlineThreshold
+            usePersistentDeployments = settings.usePersistentDeployments
         }
     }
 }

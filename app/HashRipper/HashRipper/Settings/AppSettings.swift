@@ -115,6 +115,21 @@ class AppSettings {
         }
     }
 
+    @ObservationIgnored
+    private let usePersistentDeploymentsKey = "usePersistentDeployments"
+    var usePersistentDeployments: Bool {
+        get {
+            // Default to true - new deployment system is stable
+            if userDefaults.object(forKey: usePersistentDeploymentsKey) == nil {
+                return true
+            }
+            return userDefaults.bool(forKey: usePersistentDeploymentsKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: usePersistentDeploymentsKey)
+        }
+    }
+
     // MARK: - WatchDog Settings
     
     @ObservationIgnored

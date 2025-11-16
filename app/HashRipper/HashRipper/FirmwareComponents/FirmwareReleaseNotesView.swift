@@ -13,9 +13,10 @@ import WebKit
 struct FirmwareReleaseNotesView: View {
     let firmwareRelease: FirmwareRelease
     let onClose: () -> Void
-    
+
     @Environment(\.firmwareDownloadsManager) private var downloadsManager: FirmwareDownloadsManager?
     @State private var showingDeploymentWizard = false
+    @State private var settings = AppSettings.shared
 
     var releaseNotesReplacingHTMLComments: String {
         return firmwareRelease.changeLogMarkup.trimmingCharacters(in: .whitespacesAndNewlines).replacing(/<!--.*?-->/.dotMatchesNewlines(), with: "")
@@ -72,7 +73,11 @@ struct FirmwareReleaseNotesView: View {
         .padding(.horizontal, 12)
         .frame(height: 64)
         .sheet(isPresented: $showingDeploymentWizard) {
-            FirmwareDeploymentWizard(firmwareRelease: firmwareRelease)
+            if settings.usePersistentDeployments {
+                NewDeploymentWizard(firmwareRelease: firmwareRelease)
+            } else {
+                FirmwareDeploymentWizard(firmwareRelease: firmwareRelease)
+            }
         }
         .frame(minWidth: 600)
     }

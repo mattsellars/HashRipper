@@ -637,24 +637,34 @@ class MinerClientManager {
                     let errorCode = (error as NSError).code
                     let logger = HashRipperLogger.shared.loggerForCategory("MinerClientManager")
 
-                    // Check error type
-                    // -1001 = NSURLErrorTimedOut (timeout - increment counter)
-                    // -1004 = NSURLErrorCannotConnectToHost (connection refused - immediate offline)
-                    if errorCode == -1004 {
-                        // Connection refused/failed - mark as offline immediately
-                        let threshold = AppSettings.shared.offlineThreshold
-                        miner.consecutiveTimeoutErrors = threshold
-                        logger.warning("🔴 Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE immediately - connection refused (error -1004)")
-                    } else if errorCode == -1001 {
-                        // Timeout - increment counter
-                        miner.consecutiveTimeoutErrors += 1
+                    // Check if miner has an active deployment - if so, skip offline detection
+                    let hasActiveDeployment = MinerClientManager.hasActiveFirmwareDeployment(for: miner, in: context)
 
-                        if miner.isOffline {
-                            logger.warning("⚠️ Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE after \(miner.consecutiveTimeoutErrors) consecutive timeout errors")
-                        }
-                    } else {
-                        // Other error types, reset counter
+                    if hasActiveDeployment {
+                        // Miner is being deployed - don't mark as offline during restart
+                        // Reset error counter to prevent offline status
+                        logger.info("🚀 Miner \(miner.hostName) (\(miner.ipAddress)) has active deployment - resetting error counter from \(miner.consecutiveTimeoutErrors) to 0 (error \(errorCode))")
                         miner.consecutiveTimeoutErrors = 0
+                    } else {
+                        // Check error type
+                        // -1001 = NSURLErrorTimedOut (timeout - increment counter)
+                        // -1004 = NSURLErrorCannotConnectToHost (connection refused - immediate offline)
+                        if errorCode == -1004 {
+                            // Connection refused/failed - mark as offline immediately
+                            let threshold = AppSettings.shared.offlineThreshold
+                            miner.consecutiveTimeoutErrors = threshold
+                            logger.warning("🔴 Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE immediately - connection refused (error -1004)")
+                        } else if errorCode == -1001 {
+                            // Timeout - increment counter
+                            miner.consecutiveTimeoutErrors += 1
+
+                            if miner.isOffline {
+                                logger.warning("⚠️ Miner \(miner.hostName) (\(miner.ipAddress)) marked as OFFLINE after \(miner.consecutiveTimeoutErrors) consecutive timeout errors")
+                            }
+                        } else {
+                            // Other error types, reset counter
+                            miner.consecutiveTimeoutErrors = 0
+                        }
                     }
 
                     // Find the most recent successful update to copy its values
@@ -793,6 +803,42 @@ class MinerClientManager {
             }
         })
         print("📱 All miner refreshes resumed")
+    }
+
+    // MARK: - Deployment Support
+
+    /// Checks if a miner has an active firmware deployment
+    private static func hasActiveFirmwareDeployment(for miner: Miner, in context: ModelContext) -> Bool {
+        let macAddress = miner.macAddress
+        let logger = HashRipperLogger.shared.loggerForCategory("MinerClientManager")
+
+        // First, get all MinerFirmwareDeployment records to debug
+        let allDeploymentsDescriptor = FetchDescriptor<MinerFirmwareDeployment>()
+        let allDeployments = (try? context.fetch(allDeploymentsDescriptor)) ?? []
+        logger.debug("📊 Total MinerFirmwareDeployment records in database: \(allDeployments.count)")
+
+        // Log all deployments for this MAC address
+        let macDeployments = allDeployments.filter { $0.minerMACAddress == macAddress }
+        logger.debug("📊 Deployments for MAC \(macAddress): \(macDeployments.count)")
+        for deployment in macDeployments {
+            logger.debug("   - Status: \(deployment.status.description), IP: \(deployment.minerIPAddress), Name: \(deployment.minerName)")
+        }
+
+        // Use manual filtering instead of predicate due to enum comparison issues
+        let activeDeployments = allDeployments.filter { deployment in
+            deployment.minerMACAddress == macAddress &&
+            deployment.status == .inProgress
+        }
+
+        let hasDeployment = !activeDeployments.isEmpty
+
+        if hasDeployment {
+            logger.info("🔍 Found \(activeDeployments.count) active deployment(s) for miner \(miner.hostName) (MAC: \(macAddress))")
+        } else {
+            logger.debug("❌ No active deployments found for miner \(miner.hostName) (MAC: \(macAddress))")
+        }
+
+        return hasDeployment
     }
 
 }
