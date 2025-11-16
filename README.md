@@ -1,7 +1,7 @@
 # HashRipper
 
 
-Work in progress macOS app to manage AxeOS based bitcoin miners. 
+Work in progress macOS app to manage AxeOS and Nerd*OS based bitcoin miners. 
 
 ### Important
 Requires NerdQAxe miners to be on [AxeOS version 1.0.30+](https://github.com/shufps/ESP-Miner-NerdQAxePlus/releases/tag/v1.0.30) due to requiring macAddress information of the miner.
@@ -46,7 +46,24 @@ Step 3. Deploy
 ### Record Websocket data to a file
 <img width="1450" height="947" alt="Screenshot 2025-08-09 at 10 21 12 PM" src="https://github.com/user-attachments/assets/b75ea837-dfaa-4e78-a1c1-b8ef1ffeb086" />
 
-### Firmware deployments
+### Firmware deployments Manager (New · Beta)
+Similar behavior to the original but now keeps historical data so you can go back to find which firmware was deployed to what miners and when it was deployed. The deployment process in the new manager is async and no longer blocks you from using the rest of the app. Simply close and come back later to see progress/result.
+
+Step 1. Pick how you want to deploy
+<img width="1904" height="1002" alt="Screenshot 2025-11-16 at 9 22 02 AM" src="https://github.com/user-attachments/assets/d56d0f46-80db-4b63-9c4f-30e6f8ab8731" />
+
+Step 2. Pick from the miners compatible with the selected firmware
+<img width="1904" height="1002" alt="Screenshot 2025-11-16 at 9 22 14 AM" src="https://github.com/user-attachments/assets/2302ceee-ce29-43cf-bf14-6bb2add41a49" />
+
+Step 3. Review
+<img width="1904" height="1002" alt="Screenshot 2025-11-16 at 9 22 19 AM" src="https://github.com/user-attachments/assets/780e53f5-aa36-46ed-9993-e4ab082c4ae4" />
+
+Step 3. Roll it out!
+<img width="1205" height="869" alt="Screenshot 2025-11-16 at 9 24 16 AM" src="https://github.com/user-attachments/assets/e17c2932-c13c-4008-97b7-d6c50d2e978c" />
+<img width="1205" height="869" alt="Screenshot 2025-11-16 at 9 26 03 AM" src="https://github.com/user-attachments/assets/ad2c0aed-5e96-4923-aa6d-d44d9a600551" />
+
+
+### Firmware deployments (old)
 Step 1. Pick how you want to deploy
 <img width="1922" height="1192" alt="Screenshot 2025-08-15 at 10 54 21 PM" src="https://github.com/user-attachments/assets/d2a8d55e-22dd-4a84-b1fa-1cfe66ecaa49" />
 
