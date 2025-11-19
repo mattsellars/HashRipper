@@ -18,52 +18,61 @@ struct DeploymentListView: View {
     var body: some View {
         NavigationSplitView {
             // Sidebar: List of deployments
-            List(selection: $selectedDeployment) {
-                if !activeDeployments.isEmpty {
-                    Section("Active Deployments") {
-                        ForEach(activeDeployments, id: \.persistentModelID) { deployment in
-                            NavigationLink(value: deployment) {
-                                DeploymentRowView(deployment: deployment)
+            ScrollViewReader { proxy in
+                List(selection: $selectedDeployment) {
+                    if !activeDeployments.isEmpty {
+                        Section("Active Deployments") {
+                            ForEach(activeDeployments, id: \.persistentModelID) { deployment in
+                                NavigationLink(value: deployment) {
+                                    DeploymentRowView(deployment: deployment)
+                                }
+                                .id(deployment.persistentModelID)
                             }
                         }
                     }
-                }
 
-                if !completedDeployments.isEmpty {
-                    Section("Completed Deployments") {
-                        ForEach(completedDeployments, id: \.persistentModelID) { deployment in
-                            NavigationLink(value: deployment) {
-                                DeploymentRowView(deployment: deployment)
+                    if !completedDeployments.isEmpty {
+                        Section("Completed Deployments") {
+                            ForEach(completedDeployments, id: \.persistentModelID) { deployment in
+                                NavigationLink(value: deployment) {
+                                    DeploymentRowView(deployment: deployment)
+                                }
                             }
                         }
                     }
-                }
 
-                if activeDeployments.isEmpty && completedDeployments.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Deployments", systemImage: "arrow.down.circle")
-                    } description: {
-                        Text("Start a firmware deployment from the Firmware Releases view")
+                    if activeDeployments.isEmpty && completedDeployments.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Deployments", systemImage: "arrow.down.circle")
+                        } description: {
+                            Text("Start a firmware deployment from the Firmware Releases view")
+                        }
                     }
                 }
-            }
-            .navigationTitle("Deployments")
-            .frame(minWidth: 300)
-            .onAppear {
-                loadDeployments()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .deploymentStoreInitialized)) { _ in
-                // Store finished initial load - refresh our data
-                loadDeployments()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .deploymentCreated)) { _ in
-                loadDeployments()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .deploymentCompleted)) { _ in
-                loadDeployments()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .deploymentDeleted)) { _ in
-                loadDeployments()
+                .navigationTitle("Deployments")
+                .frame(minWidth: 300)
+                .onAppear {
+                    loadDeployments()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .deploymentStoreInitialized)) { _ in
+                    // Store finished initial load - refresh our data
+                    loadDeployments()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .deploymentCreated)) { _ in
+                    loadDeployments()
+                    // Scroll to the first active deployment (newest)
+                    if let firstDeployment = activeDeployments.first {
+                        withAnimation {
+                            proxy.scrollTo(firstDeployment.persistentModelID, anchor: .top)
+                        }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .deploymentCompleted)) { _ in
+                    loadDeployments()
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .deploymentDeleted)) { _ in
+                    loadDeployments()
+                }
             }
 
         } detail: {

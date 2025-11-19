@@ -399,7 +399,11 @@ actor DeploymentWorker {
         try? modelContext.save()
 
         if deployment.isFinished {
-            // Send completion notifications with fresh data
+            // Notify store to clean up worker and refresh contexts FIRST
+            // This ensures the store's ModelContext sees the completedAt date before notifications are sent
+            await onComplete()
+
+            // NOW send completion notifications - store has refreshed its context
             await MainActor.run {
                 DeploymentNotificationHelper.postDeploymentCompleted(deployment)
             }
@@ -410,9 +414,6 @@ actor DeploymentWorker {
                 successCount: deployment.successCount,
                 failureCount: deployment.failureCount
             )
-
-            // Notify store to clean up worker
-            await onComplete()
         } else {
             // Post update notification
             await MainActor.run {

@@ -343,7 +343,7 @@ final class FirmwareDeploymentStore {
         removeStateHolder(for: deploymentId)
 
         // Reload deployments to get fresh data from database
-        // Note: Worker already sent completion notifications with accurate counts
+        // Worker saved completedAt and final counts - fetch will get fresh data
         await loadDeployments()
     }
 

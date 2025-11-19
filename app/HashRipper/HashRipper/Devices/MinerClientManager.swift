@@ -228,6 +228,10 @@ actor MinerRefreshScheduler {
             let interval = isBackgroundMode ? MinerClientManager.BACKGROUND_REFRESH_INTERVAL : MinerClientManager.REFRESH_INTERVAL
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
         }
+
+        // Loop exited - clear the refresh task so resume() can restart it
+        print("🛑 Refresh loop exited for \(ipAddress) - clearing refresh task")
+        refreshTask = nil
     }
 }
 
