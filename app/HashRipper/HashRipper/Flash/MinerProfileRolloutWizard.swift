@@ -356,13 +356,18 @@ private struct SelectMinersScreen: View {
     @Environment(\.minerClientManager) var minerClientManager
 
     @Query(sort: [SortDescriptor(\Miner.hostName)])
-    var miners: [Miner]
+    var allMiners: [Miner]
 
     @State var model: RolloutWizardModel
 
     let columns = [
         GridItem(.adaptive(minimum: 200, maximum: 200)),
     ]
+
+    // Filter out offline miners (computed property, can't use in @Query predicate)
+    private var miners: [Miner] {
+        allMiners.filter { !$0.isOffline }
+    }
 
     var body: some View {
         VStack {

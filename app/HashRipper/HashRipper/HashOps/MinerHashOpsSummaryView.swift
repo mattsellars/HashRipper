@@ -195,7 +195,7 @@ struct MinerHashOpsSummaryView: View  {
                                             .fontWeight(.semibold)
                                             .foregroundStyle(.secondary)
                                         
-                                        Text("\(latestUpdate.isUsingFallbackStratum ? latestUpdate.fallbackStratumURL : latestUpdate.stratumURL):\(latestUpdate.isUsingFallbackStratum ? latestUpdate.fallbackStratumPort : latestUpdate.stratumPort)")
+                                        Text("\(latestUpdate.isUsingFallbackStratum ? latestUpdate.fallbackStratumURL : latestUpdate.stratumURL):\(String(latestUpdate.isUsingFallbackStratum ? latestUpdate.fallbackStratumPort : latestUpdate.stratumPort))")
                                             .font(.caption)
                                             .fontWeight(.medium)
                                             .fontDesign(.monospaced)

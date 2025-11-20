@@ -8,6 +8,33 @@
 
 public struct AxeOSDeviceInfo: Codable, Sendable {
 
+    // MARK: - Helper Functions
+
+    /// Converts a difficulty number to a human-readable string with appropriate suffix
+    /// Examples: 5822259272 → "5.82G", 2365074 → "2.37M"
+    private static func formatDifficulty(_ value: Int) -> String {
+        let doubleValue = Double(value)
+
+        let trillion: Double = 1_000_000_000_000
+        let billion: Double = 1_000_000_000
+        let million: Double = 1_000_000
+        let thousand: Double = 1_000
+
+        if doubleValue >= trillion {
+            return String(format: "%.2fT", doubleValue / trillion)
+        } else if doubleValue >= billion {
+            return String(format: "%.2fG", doubleValue / billion)
+        } else if doubleValue >= million {
+            return String(format: "%.2fM", doubleValue / million)
+        } else if doubleValue >= thousand {
+            return String(format: "%.2fK", doubleValue / thousand)
+        } else {
+            return String(value)
+        }
+    }
+
+    // MARK: - Coding Keys
+
     // coding keys for same key different type collision
     enum TypeDifferentCodingKeys: String, CodingKey {
         // Bitaxe this is an int but NerdQAxe this is a boolean
@@ -111,8 +138,23 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
             power = try? commonContainer.decode(Double.self, forKey: CommonCodingKeys.power)
 
             hashRate = try? commonContainer.decode(Double.self, forKey: CommonCodingKeys.hashRate)
-            bestDiff = try? commonContainer.decode(String.self, forKey: CommonCodingKeys.bestDiff)
-            bestSessionDiff = try? commonContainer.decode(String.self, forKey: CommonCodingKeys.bestSessionDiff)
+
+            if let bd = try? commonContainer.decodeIfPresent(String.self, forKey: CommonCodingKeys.bestDiff) {
+                bestDiff = bd
+            } else if let bd = try? commonContainer.decodeIfPresent(Int.self, forKey: CommonCodingKeys.bestDiff) {
+                bestDiff = Self.formatDifficulty(bd)
+            } else {
+                bestDiff = nil
+            }
+
+            if let sd = try? commonContainer.decode(String.self, forKey: CommonCodingKeys.bestSessionDiff) {
+                bestSessionDiff = sd
+            } else if let sd = try? commonContainer.decode(Int.self, forKey: CommonCodingKeys.bestSessionDiff) {
+                bestSessionDiff = Self.formatDifficulty(sd)
+            } else {
+                bestSessionDiff = nil
+            }
+
 
             stratumUser = try commonContainer.decode(String.self, forKey: CommonCodingKeys.stratumUser)
 
