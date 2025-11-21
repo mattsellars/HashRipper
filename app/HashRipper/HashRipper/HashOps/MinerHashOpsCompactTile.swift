@@ -20,66 +20,44 @@ struct MinerHashOpsCompactTile: View {
     @Environment(\.newMinerScanner) var newMinerScanner
     @Environment(\.modelContext) var modelContext
 
-    var initialMiner: Miner
+    var miner: Miner
+    private let macAddress: String
 
-    @Query
-    var latestUpdates: [MinerUpdate]
+    @State private var mostRecentUpdate: MinerUpdate?
 
-    @Query
-    var currentMiner: [Miner]
+    @State var showRestartSuccessDialog: Bool = false
+    @State var showRestartFailedDialog: Bool = false
+    @State var showFirmwareReleaseNotes: Bool = false
+    @State var hasAvailableFirmwareUpdate: Bool = false
+    @State var availableFirmwareRelease: FirmwareRelease? = nil
+    @State var showRetryMinerDialog: Bool = false
 
     init(miner: Miner) {
-        self.initialMiner = miner
-        let macAddress = miner.macAddress
-
-        // Query for latest updates
-        var updatesDescriptor = FetchDescriptor<MinerUpdate>(
-            predicate: #Predicate<MinerUpdate> { update in
-                update.macAddress == macAddress
-            },
-            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
-        )
-        updatesDescriptor.fetchLimit = 1  // Only get the latest update
-        self._latestUpdates = Query(updatesDescriptor, animation: .default)
-
-        // Query for current miner data (to get updated IP address)
-        var minerDescriptor = FetchDescriptor<Miner>(
-            predicate: #Predicate<Miner> { miner in
-                miner.macAddress == macAddress
-            }
-        )
-        minerDescriptor.fetchLimit = 1
-        self._currentMiner = Query(minerDescriptor, animation: .default)
-    }
-
-    var miner: Miner {
-        return currentMiner.first ?? initialMiner
-    }
-
-    @State
-    var showRestartSuccessDialog: Bool = false
-
-    @State
-    var showRestartFailedDialog: Bool = false
-    
-    @State
-    var showFirmwareReleaseNotes: Bool = false
-    
-    @State
-    var hasAvailableFirmwareUpdate: Bool = false
-
-    @State
-    var availableFirmwareRelease: FirmwareRelease? = nil
-
-    @State
-    var showRetryMinerDialog: Bool = false
-
-    var mostRecentUpdate: MinerUpdate? {
-        latestUpdates.first ?? nil
+        self.miner = miner
+        self.macAddress = miner.macAddress
     }
 
     var isMinerOffline: Bool {
-        return currentMiner.first?.isOffline ?? miner.isOffline
+        return miner.isOffline
+    }
+
+    private func loadLatestUpdate() {
+        let mac = macAddress
+        var descriptor = FetchDescriptor<MinerUpdate>(
+            predicate: #Predicate<MinerUpdate> { update in
+                update.macAddress == mac
+            },
+            sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+
+        do {
+            let updates = try modelContext.fetch(descriptor)
+            mostRecentUpdate = updates.first
+        } catch {
+            logger.error("Error loading latest update: \(error)")
+            mostRecentUpdate = nil
+        }
     }
     var asicTempText: String {
         if let temp = mostRecentUpdate?.temp {
@@ -142,7 +120,7 @@ struct MinerHashOpsCompactTile: View {
     }
     
     var hasVersionMismatch: Bool {
-        return latestUpdates.first?.hasVersionMismatch ?? false
+        return mostRecentUpdate?.hasVersionMismatch ?? false
     }
     
     @MainActor
@@ -249,17 +227,20 @@ struct MinerHashOpsCompactTile: View {
         }
         .padding(12)
         .overlay(alignment: .topLeading) {
+
             MinerIPHeaderView(
                 miner: miner,
                 isMinerOnParasite: isMinerOnParasite(),
                 hasFirmwareUpdate: hasAvailableFirmwareUpdate,
                 hasVersionMismatch: hasVersionMismatch,
                 isOffline: isMinerOffline,
+                uptimeSeconds: mostRecentUpdate?.uptimeSeconds,
                 onFirmwareUpdateTap: {
                     showFirmwareReleaseNotes = true
                 },
                 onOfflineRetryTap: retryOfflineMiner
             )
+
         }
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -290,6 +271,16 @@ struct MinerHashOpsCompactTile: View {
         }
         .task {
             await checkForFirmwareUpdate()
+        }
+        .onAppear {
+            loadLatestUpdate()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { notification in
+            // Only reload if this notification is for our miner
+            if let notificationMac = notification.userInfo?["macAddress"] as? String,
+               notificationMac == macAddress {
+                loadLatestUpdate()
+            }
         }
         .onChange(of: mostRecentUpdate?.minerFirmwareVersion) { _, _ in
             Task {
@@ -431,11 +422,28 @@ struct MinerIPHeaderView: View {
     let hasFirmwareUpdate: Bool
     let hasVersionMismatch: Bool
     let isOffline: Bool
+    let uptimeSeconds: Int?
     let onFirmwareUpdateTap: () -> Void
     let onOfflineRetryTap: () -> Void
 
+    private var formattedUptime: String? {
+        guard let seconds = uptimeSeconds, seconds > 0 else { return nil }
+
+        let days = seconds / 86400
+        let hours = (seconds % 86400) / 3600
+        let minutes = (seconds % 3600) / 60
+
+        if days > 0 {
+            return "\(days)d \(hours)h"
+        } else if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+
     var body: some View {
-        HStack {
+        HStack(alignment: .top) {
             HStack(spacing: 6) {
                 Link(miner.ipAddress, destination: URL(string: "http://\(miner.ipAddress)/")!)
                     .font(.subheadline)
@@ -467,24 +475,25 @@ struct MinerIPHeaderView: View {
                     .padding(.leading, 1)
             }
             Spacer()
-            HStack {
-                Text(miner.minerDeviceDisplayName)
-                    .font(.subheadline)
-                    .padding(.vertical, 2)
-                    .padding(.horizontal, 6)
-                    .foregroundStyle(Color.white)
+            VStack(alignment: .trailing) {
+                HStack {
+                    Text(miner.minerDeviceDisplayName)
+                        .font(.subheadline)
+                        .padding(.vertical, 2)
+                        .padding(.horizontal, 6)
+                        .foregroundStyle(Color.white)
 
-                if isMinerOnParasite {
-                    ParasitePoolIndicatorView()
-                }
+                    if isMinerOnParasite {
+                        ParasitePoolIndicatorView()
+                    }
 
-                // Show firmware update indicator if available (and not offline)
-                if hasFirmwareUpdate {
-                    FirmwareUpdateIndicatorView(onTap: onFirmwareUpdateTap)
+                    // Show firmware update indicator if available (and not offline)
+                    if hasFirmwareUpdate {
+                        FirmwareUpdateIndicatorView(onTap: onFirmwareUpdateTap)
+                    }
                 }
-            }
-            .padding(.horizontal, 4)
-            .background(Color.orange)
+                .padding(.horizontal, 4)
+                .background(Color.orange)
                 .clipShape(
                     .rect(
                         topLeadingRadius: 0,
@@ -493,7 +502,19 @@ struct MinerIPHeaderView: View {
                         topTrailingRadius: 0
                     )
                 )
-
+                if let uptime = formattedUptime {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Image(systemName: "clock")
+                            .font(.caption)
+                            .fontDesign(.monospaced)
+                        Text(uptime)
+                            .font(.caption)
+                            .fontDesign(.monospaced)
+                    }
+                    .foregroundStyle(Color.white.opacity(0.8))
+                    .padding(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 6))
+                }
+            }
         }
     }
 }
