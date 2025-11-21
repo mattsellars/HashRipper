@@ -52,17 +52,17 @@ class MinerWebsocketDataRecordingSession {
     }
 
     private var recordingFileWriter: FileLogger?
+    private var messageForwardingCancellable: AnyCancellable?
 
     private func setupMessageForwarding() {
+        Logger.sessionLogger.debug("Setting up message forwarding for \(self.minerIpAddress)")
         Task {
-            (await websocketClient.messagePublisher)
-//            messageSubscription = publisher
+            messageForwardingCancellable = (await websocketClient.messagePublisher)
                 .filter({ !$0.isEmpty })
                 .sink { [weak self] message in
                     self?.messageSubject.send(message.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
-                .store(in: &cancellables)
-
+            Logger.sessionLogger.debug("Message forwarding subscription established for \(self.minerIpAddress)")
         }
     }
 
@@ -76,6 +76,16 @@ class MinerWebsocketDataRecordingSession {
     }
 
     func startRecording() async {
+        Logger.sessionLogger.debug("startRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
+
+        // Re-setup message forwarding if it was cancelled
+        if messageForwardingCancellable == nil {
+            Logger.sessionLogger.debug("Message forwarding cancellable is nil, re-establishing for \(self.minerIpAddress)")
+            setupMessageForwarding()
+            // Give the async setup a moment to complete
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        }
+
         let fileName = "\(Self.filenameDateFormatter.string(from: Date()))-\(minerHostName)-websocket-data.txt"
         let fileUrl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(fileName)
@@ -84,18 +94,32 @@ class MinerWebsocketDataRecordingSession {
         self.recordingFileWriter?.startLogging(from: messagePublisher)
         self.state = .recording(file: fileUrl)
         recordingStateSubject.send(state)
+
+        Logger.sessionLogger.debug("Connecting websocket to \(self.websocketUrl)")
         await self.websocketClient.connect(to: websocketUrl)
+        Logger.sessionLogger.debug("Websocket connect() returned for \(self.minerIpAddress)")
     }
 
     func stopRecording() async {
-        Logger.sessionLogger.debug("Stopping websocket data recording")
+        Logger.sessionLogger.debug("stopRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
         self.state = .idle
+
+        Logger.sessionLogger.debug("Closing websocket for \(self.minerIpAddress)")
         await self.websocketClient.close()
+        Logger.sessionLogger.debug("Websocket closed for \(self.minerIpAddress)")
+
         self.recordingFileWriter?.stopLogging()
         self.recordingFileWriter = nil
+
+        // Cancel message forwarding so it can be re-established on next recording
+        messageForwardingCancellable?.cancel()
+        messageForwardingCancellable = nil
+        Logger.sessionLogger.debug("Message forwarding cancelled for \(self.minerIpAddress)")
+
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
         recordingStateSubject.send(state)
+        Logger.sessionLogger.debug("stopRecording() completed for \(self.minerIpAddress)")
     }
 }
 

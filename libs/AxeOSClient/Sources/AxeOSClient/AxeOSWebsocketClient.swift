@@ -30,12 +30,18 @@ public actor AxeOSWebsocketClient {
     }
     /// Connect to the server and start the read loop.
     public func connect(to url: URL) async {
+        Logger.websocketsLogger.debug("connect() called for \(url.absoluteString)")
+
         // Cancel an existing connection if the caller reconnects
-        task?.cancel(with: .goingAway, reason: nil)
+        if task != nil {
+            Logger.websocketsLogger.debug("Cancelling existing task before reconnecting")
+            task?.cancel(with: .goingAway, reason: nil)
+        }
 
         let newTask = session.webSocketTask(with: url)
         task = newTask
         newTask.resume()
+        Logger.websocketsLogger.debug("WebSocket task resumed for \(url.absoluteString)")
 
         // Kick off a concurrent read loop
         Task { await readLoop(socket: newTask) }
@@ -51,7 +57,10 @@ public actor AxeOSWebsocketClient {
 
     /// Close cleanly
     public func close() {
+        Logger.websocketsLogger.debug("close() called, task exists: \(self.task != nil)")
         task?.cancel(with: .normalClosure, reason: nil)
+        task = nil
+        Logger.websocketsLogger.debug("WebSocket task cancelled and cleared")
     }
 
     // MARK: – Private helpers
