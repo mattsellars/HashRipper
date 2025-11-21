@@ -29,6 +29,9 @@ final class MinerUpdate {
     public var fanspeed: Int?
     public var hashRate: Double
     public var power: Double
+    public var sharesAccepted: Int?
+    public var sharesRejected: Int?
+    public var uptimeSeconds: Int?
     public var isUsingFallbackStratum: Bool
     public var miner: Miner
     public var macAddress: String
@@ -56,6 +59,9 @@ final class MinerUpdate {
         fanspeed: Int? = nil,
         hashRate: Double,
         power: Double,
+        sharesAccepted: Int? = nil,
+        sharesRejected: Int? = nil,
+        uptimeSeconds: Int? = nil,
         isUsingFallbackStratum: Bool,
         timestamp: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
         isFailedUpdate: Bool = false
@@ -81,6 +87,9 @@ final class MinerUpdate {
         self.fanspeed = fanspeed
         self.hashRate = hashRate
         self.power = power
+        self.sharesAccepted = sharesAccepted
+        self.sharesRejected = sharesRejected
+        self.uptimeSeconds = uptimeSeconds
         self.isUsingFallbackStratum = isUsingFallbackStratum
         self.timestamp = timestamp
         self.isFailedUpdate = isFailedUpdate

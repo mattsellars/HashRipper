@@ -299,7 +299,12 @@ struct MinerProfileRolloutWizard: View {
                     Button("Close") {
                         onClose()
                     }
-                    .disabled(model.selectedMiners.values.filter({ $0.status != .complete}).count > 0)
+                    // Only disable Close while miners are still in progress (pending)
+                    // Allow close when all miners are either complete or failed
+                    .disabled(model.selectedMiners.values.contains(where: { state in
+                        if case .pending = state.status { return true }
+                        return false
+                    }))
                 }
             }
             .padding()

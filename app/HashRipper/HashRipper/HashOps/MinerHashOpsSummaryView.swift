@@ -246,14 +246,11 @@ struct MinerHashOpsSummaryView: View  {
                 GridItem(.flexible(), spacing: 16)
             ], spacing: 20) {
                 // Performance Metrics
-                MetricCardView(
-                    icon: "gauge.with.dots.needle.67percent",
-                    title: "Hash Rate",
-                    value: formatMinerHashRate(rawRateValue: mostRecentUpdate?.hashRate ?? 0).rateString,
-                    unit: formatMinerHashRate(rawRateValue: mostRecentUpdate?.hashRate ?? 0).rateSuffix,
-                    color: .mint
+                HashRateFrequencyMetricCardView(
+                    hashRate: mostRecentUpdate?.hashRate ?? 0,
+                    frequency: mostRecentUpdate?.frequency ?? 0
                 )
-                
+
                 MetricCardView(
                     icon: "bolt.fill",
                     title: "Power",
@@ -261,15 +258,12 @@ struct MinerHashOpsSummaryView: View  {
                     unit: "W",
                     color: .yellow
                 )
-                
-                MetricCardView(
-                    icon: "waveform.path",
-                    title: "Frequency",
-                    value: "\(mostRecentUpdate?.frequency ?? 0)",
-                    unit: "MHz",
-                    color: .purple
+
+                FanMetricCardView(
+                    rpm: mostRecentUpdate?.fanrpm ?? 0,
+                    speedPercent: mostRecentUpdate?.fanspeed ?? 0
                 )
-                
+
                 // Temperature Metrics
                 MetricCardView(
                     icon: "cpu.fill",
@@ -290,35 +284,23 @@ struct MinerHashOpsSummaryView: View  {
                 )
                 
                 // Achievement Metrics
-                MetricCardView(
-                    icon: "medal.star.fill",
-                    title: "Best Diff",
-                    value: mostRecentUpdate?.bestDiff ?? "N/A",
-                    unit: "",
-                    color: .orange
+                DifficultyMetricCardView(
+                    bestDiff: mostRecentUpdate?.bestDiff ?? "N/A",
+                    sessionBest: mostRecentUpdate?.bestSessionDiff ?? "N/A"
                 )
-                
-                MetricCardView(
-                    icon: "baseball.diamond.bases",
-                    title: "Session Best",
-                    value: mostRecentUpdate?.bestSessionDiff ?? "N/A",
-                    unit: "",
-                    color: .blue
+
+                SharesMetricCardView(
+                    accepted: mostRecentUpdate?.sharesAccepted ?? 0,
+                    rejected: mostRecentUpdate?.sharesRejected ?? 0
                 )
-                
-                MetricCardView(
-                    icon: "f.circle.fill",
-                    title: "Firmware",
-                    value: mostRecentUpdate?.minerFirmwareVersion ?? "N/A",
-                    unit: "",
-                    color: .secondary
+
+                VersionMetricCardView(
+                    firmwareVersion: mostRecentUpdate?.minerFirmwareVersion ?? "N/A",
+                    axeOSVersion: mostRecentUpdate?.axeOSVersion ?? "N/A"
                 )
-                MetricCardView(
-                    icon: "v.circle.fill",
-                    title: "AxeOS",
-                    value: mostRecentUpdate?.axeOSVersion ?? "N/A",
-                    unit: "",
-                    color: .secondary
+
+                UptimeMetricCardView(
+                    uptimeSeconds: mostRecentUpdate?.uptimeSeconds ?? 0
                 )
             }
             .padding(.horizontal, 24)
@@ -510,5 +492,397 @@ struct InfoRowView: View {
         }
 
 
+    }
+}
+
+struct SharesMetricCardView: View {
+    let accepted: Int
+    let rejected: Int
+
+    @State private var displayedAccepted: Int = 0
+    @State private var displayedRejected: Int = 0
+
+    private var rejectionRate: Double {
+        let total = accepted + rejected
+        guard total > 0 else { return 0 }
+        return (Double(rejected) / Double(total)) * 100
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "chart.bar.fill")
+                    .font(.title3)
+                    .foregroundStyle(.green)
+                    .frame(width: 20)
+
+                Text("Shares")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                // Accepted row
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                    Text("Accepted:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(displayedAccepted)")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .fontDesign(.monospaced)
+                        .contentTransition(.numericText(value: Double(displayedAccepted)))
+                }
+
+                // Rejected row with rate in parenthesis
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(rejected > 0 ? .red : .gray.opacity(0.5))
+                    Text("Rejected:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(displayedRejected)")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .fontDesign(.monospaced)
+                        .foregroundStyle(rejected > 0 ? .red : .primary)
+                        .contentTransition(.numericText(value: Double(displayedRejected)))
+                    Text(String(format: "(%.2f%%)", rejectionRate))
+                        .font(.caption)
+                        .foregroundStyle(rejectionRate > 5 ? .orange : .secondary)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onAppear {
+            displayedAccepted = accepted
+            displayedRejected = rejected
+        }
+        .onChange(of: accepted) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedAccepted = newValue
+            }
+        }
+        .onChange(of: rejected) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedRejected = newValue
+            }
+        }
+    }
+}
+
+struct VersionMetricCardView: View {
+    let firmwareVersion: String
+    let axeOSVersion: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "info.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20)
+
+                Text("Version")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("FW")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .leading)
+                    Text(firmwareVersion)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .fontDesign(.monospaced)
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 6) {
+                    Text("OS")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .leading)
+                    Text(axeOSVersion)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .fontDesign(.monospaced)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct DifficultyMetricCardView: View {
+    let bestDiff: String
+    let sessionBest: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "medal.star.fill")
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                    .frame(width: 20)
+
+                Text("Difficulty")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text("Best")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    Text(bestDiff)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .fontDesign(.monospaced)
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 6) {
+                    Text("Session")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .leading)
+                    Text(sessionBest)
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .fontDesign(.monospaced)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+struct HashRateFrequencyMetricCardView: View {
+    let hashRate: Double
+    let frequency: Double?
+
+    @State private var displayedHashRate: Double = 0
+    @State private var displayedFrequency: Double = 0
+
+    private var formattedHashRate: (rateString: String, rateSuffix: String, rateValue: Double) {
+        formatMinerHashRate(rawRateValue: hashRate)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "gauge.with.dots.needle.67percent")
+                    .font(.title3)
+                    .foregroundStyle(.mint)
+                    .frame(width: 20)
+
+                Text("Hash Rate")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                // Frequency on title line
+                Image(systemName: "waveform.path")
+                    .font(.caption)
+                    .foregroundStyle(.purple)
+                Text(String(format: "%.0f", displayedFrequency))
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .fontDesign(.monospaced)
+                    .contentTransition(.numericText(value: displayedFrequency))
+                Text("MHz")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Hash rate - prominent display
+            HStack(alignment: .lastTextBaseline, spacing: 4) {
+                Text(formattedHashRate.rateString)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .fontDesign(.monospaced)
+                    .contentTransition(.numericText(value: displayedHashRate))
+                Text(formattedHashRate.rateSuffix)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onAppear {
+            displayedHashRate = hashRate
+            displayedFrequency = frequency ?? 0
+        }
+        .onChange(of: hashRate) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedHashRate = newValue
+            }
+        }
+        .onChange(of: frequency) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedFrequency = newValue ?? 0
+            }
+        }
+    }
+}
+
+struct FanMetricCardView: View {
+    let rpm: Int
+    let speedPercent: Int
+
+    @State private var displayedRpm: Int = 0
+    @State private var displayedSpeed: Int = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "fan.fill")
+                    .font(.title3)
+                    .foregroundStyle(.cyan)
+                    .frame(width: 20)
+
+                Text("Fan")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                // RPM row
+                HStack(spacing: 6) {
+                    Image(systemName: "dial.medium")
+                        .font(.caption)
+                        .foregroundStyle(.cyan)
+                    Text("\(displayedRpm)")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .fontDesign(.monospaced)
+                        .contentTransition(.numericText(value: Double(displayedRpm)))
+                    Text("RPM")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // Speed percentage row
+                HStack(spacing: 6) {
+                    Image(systemName: "percent")
+                        .font(.caption)
+                        .foregroundStyle(.cyan)
+                    Text("\(displayedSpeed)")
+                        .font(.callout)
+                        .fontWeight(.semibold)
+                        .fontDesign(.monospaced)
+                        .contentTransition(.numericText(value: Double(displayedSpeed)))
+                    Text("%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onAppear {
+            displayedRpm = rpm
+            displayedSpeed = speedPercent
+        }
+        .onChange(of: rpm) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedRpm = newValue
+            }
+        }
+        .onChange(of: speedPercent) { _, newValue in
+            withAnimation(.easeInOut(duration: 0.3)) {
+                displayedSpeed = newValue
+            }
+        }
+    }
+}
+
+struct UptimeMetricCardView: View {
+    let uptimeSeconds: Int
+
+    private var formattedUptime: String {
+        let seconds = uptimeSeconds
+        let days = seconds / 86400
+        let hours = (seconds % 86400) / 3600
+        let minutes = (seconds % 3600) / 60
+
+        if days > 0 {
+            return "\(days)d \(hours)h \(minutes)m"
+        } else if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.title3)
+                    .foregroundStyle(.indigo)
+                    .frame(width: 20)
+
+                Text("Uptime")
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+            }
+
+            Text(formattedUptime)
+                .font(.title2)
+                .fontWeight(.semibold)
+                .fontDesign(.monospaced)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }

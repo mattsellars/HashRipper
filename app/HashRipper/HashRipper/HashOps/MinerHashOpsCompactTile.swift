@@ -185,6 +185,36 @@ struct MinerHashOpsCompactTile: View {
                         Text(mostRecentUpdate?.bestDiff ?? "N/A")
                             .font(.headline)
                     }
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text(formatCompactNumber(mostRecentUpdate?.sharesAccepted ?? 0))
+                            .font(.caption)
+                            .fontDesign(.monospaced)
+                        if let rejected = mostRecentUpdate?.sharesRejected, rejected > 0 {
+                            Text("/")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "xmark.circle")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                            Text(formatCompactNumber(rejected))
+                                .font(.caption)
+                                .fontDesign(.monospaced)
+                                .foregroundStyle(.red)
+                            // Show rejection rate
+                            let accepted = mostRecentUpdate?.sharesAccepted ?? 0
+                            let total = accepted + rejected
+                            if total > 0 {
+                                let rate = (Double(rejected) / Double(total)) * 100
+                                Text(String(format: "(%.2f%%)", rate))
+                                    .font(.caption2)
+                                    .foregroundStyle(rate > 5 ? .orange : .secondary)
+                            }
+                        }
+                    }
+                    .help("Shares accepted\(mostRecentUpdate?.sharesRejected ?? 0 > 0 ? " / rejected" : "")")
                     HashRateView(rateInfo: formatMinerHashRate(rawRateValue: mostRecentUpdate?.hashRate ?? 0))
                 }
                 Spacer()
@@ -485,5 +515,22 @@ struct TempuratureCapsuleView: View {
         .padding(EdgeInsets(top: 1, leading: 12, bottom: 1, trailing: 12))
         .background(Color.black)
         .clipShape(.capsule)
+    }
+}
+
+func formatCompactNumber(_ value: Int) -> String {
+    let doubleValue = Double(value)
+    let billion: Double = 1_000_000_000
+    let million: Double = 1_000_000
+    let thousand: Double = 1_000
+
+    if doubleValue >= billion {
+        return String(format: "%.1fB", doubleValue / billion)
+    } else if doubleValue >= million {
+        return String(format: "%.1fM", doubleValue / million)
+    } else if doubleValue >= thousand {
+        return String(format: "%.1fk", doubleValue / thousand)
+    } else {
+        return String(value)
     }
 }

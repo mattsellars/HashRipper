@@ -624,6 +624,9 @@ class MinerClientManager {
                         fanspeed: info.fanspeed,
                         hashRate: info.hashRate ?? 0,
                         power: info.power ?? 0,
+                        sharesAccepted: info.sharesAccepted,
+                        sharesRejected: info.sharesRejected,
+                        uptimeSeconds: info.uptimeSeconds,
                         isUsingFallbackStratum: info.isUsingFallbackStratum,
                         timestamp: timestamp
                     )
