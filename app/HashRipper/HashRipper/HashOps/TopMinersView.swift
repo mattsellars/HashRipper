@@ -5,25 +5,28 @@
 //  Created by Matt Sellars
 //
 
+import Combine
 import SwiftData
 import SwiftUI
 
 struct TopMinersView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var allMiners: [Miner]
-    
-    @State private var topMiners: [TopMinerData] = []
-    
-    struct TopMinerData: Identifiable {
-        var id: String {
-            miner.macAddress
-        }
 
-        let miner: Miner
+    @State private var topMiners: [TopMinerData] = []
+
+    private let updatePublisher = NotificationCenter.default
+        .publisher(for: .minerUpdateInserted)
+        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+
+    struct TopMinerData: Identifiable {
+        var id: String { macAddress }
+
+        let macAddress: String
+        let hostName: String
         let bestDiff: String
         let bestDiffValue: Double
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             TopMinersTitle()
@@ -32,7 +35,7 @@ struct TopMinersView: View {
                 ForEach(0..<3, id: \.self) { index in
                     let minerData = index < topMiners.count ? topMiners[index] : nil
                     let isPlaceholder = minerData == nil
-                    
+
                     HStack(spacing: 8) {
                         // Rank badge
                         ZStack {
@@ -48,14 +51,14 @@ struct TopMinersView: View {
 
                         // Miner info
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(minerData?.miner.hostName ?? "Placeholder Miner")
+                            Text(minerData?.hostName ?? "Placeholder Miner")
                                 .font(.title3)
                                 .fontWeight(.medium)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .transition(.opacity)
                                 .redacted(reason: isPlaceholder ? .placeholder : [])
-                                .help(minerData?.miner.hostName ?? "Loading")
+                                .help(minerData?.hostName ?? "Loading")
 
                             HStack(spacing: 4) {
                                 Image(systemName: "medal.star.fill")
@@ -71,7 +74,6 @@ struct TopMinersView: View {
                             }
                         }
 
-
                         Spacer()
                     }
                     .padding(.vertical, 8)
@@ -85,13 +87,11 @@ struct TopMinersView: View {
         .onAppear {
             loadTopMiners()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { notification in
-            if let macAddress = notification.userInfo?["macAddress"] as? String {
-                checkAndUpdateIfNeeded(for: macAddress)
-            }
+        .onReceive(updatePublisher) { _ in
+            loadTopMiners()
         }
     }
-    
+
     private func rankColor(for index: Int) -> Color {
         switch index {
         case 0: return .yellow  // Gold
@@ -100,69 +100,46 @@ struct TopMinersView: View {
         default: return .blue
         }
     }
-    
-    private func checkAndUpdateIfNeeded(for macAddress: String) {
-        Task { @MainActor in
-            // Find the miner that was updated
-            guard let updatedMiner = allMiners.first(where: { $0.macAddress == macAddress }) else { return }
-            
-            // Get the latest update for this miner
-            guard let latestUpdate = updatedMiner.getLatestUpdate(from: modelContext),
-                  let bestDiff = latestUpdate.bestDiff,
-                  !bestDiff.isEmpty && bestDiff != "N/A" else { return }
-            
-            let bestDiffValue = DifficultyParser.parseDifficultyValue(bestDiff)
-            guard bestDiffValue > 0 else { return }
-            
-            // Check if this miner is already in the top 3
-            let isAlreadyInTop3 = topMiners.contains { $0.miner.macAddress == macAddress }
-            
-            if isAlreadyInTop3 {
-                // If already in top 3, always reload to update the value
-                loadTopMiners()
-                return
-            }
-            
-            // If we have less than 3 miners, always add new ones
-            if topMiners.count < 3 {
-                loadTopMiners()
-                return
-            }
-            
-            // Check if this new value would beat the 3rd place (lowest of top 3)
-            let lowestTop3Value = topMiners.last?.bestDiffValue ?? 0
-            if bestDiffValue > lowestTop3Value {
-                loadTopMiners()
-            }
-        }
-    }
-    
+
     private func loadTopMiners() {
-        Task { @MainActor in
+        do {
+            let allMiners: [Miner] = try modelContext.fetch(FetchDescriptor<Miner>())
             var minerDataArray: [TopMinerData] = []
-            
+
             for miner in allMiners {
-                // Get the latest update for this miner using the existing extension
-                if let latestUpdate = miner.getLatestUpdate(from: modelContext),
+                // Get the latest update for this miner
+                let mac = miner.macAddress
+                var descriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == mac
+                    },
+                    sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+                )
+                descriptor.fetchLimit = 1
+
+                if let latestUpdate = try modelContext.fetch(descriptor).first,
                    let bestDiff = latestUpdate.bestDiff,
                    !bestDiff.isEmpty && bestDiff != "N/A" {
-                    
+
                     let bestDiffValue = DifficultyParser.parseDifficultyValue(bestDiff)
                     if bestDiffValue > 0 {
                         minerDataArray.append(TopMinerData(
-                            miner: miner,
+                            macAddress: miner.macAddress,
+                            hostName: miner.hostName,
                             bestDiff: bestDiff,
                             bestDiffValue: bestDiffValue
                         ))
                     }
                 }
             }
-            
+
             // Sort by bestDiffValue in descending order and take top 3
             let top3 = Array(minerDataArray.sorted { $0.bestDiffValue > $1.bestDiffValue }.prefix(3))
             withAnimation {
                 topMiners = top3
             }
+        } catch {
+            print("Error loading top miners: \(error)")
         }
     }
 }

@@ -5,15 +5,19 @@
 //  Created by Matt Sellars
 //
 
-import SwiftUI
+import Combine
 import SwiftData
+import SwiftUI
 
 struct HashOpsView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Miner.hostName) private var allMiners: [Miner]
 
     @State private var selectedMiner: Miner? = nil
-    @State private var stableMiners: [Miner] = []
+    @State private var miners: [Miner] = []
+
+    private let updatePublisher = NotificationCenter.default
+        .publisher(for: .minerUpdateInserted)
+        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
 
     var body: some View {
         VStack {
@@ -24,16 +28,14 @@ struct HashOpsView: View {
                     ],
                     spacing: 16
                 ) {
-                    ForEach(stableMiners) { miner in
+                    ForEach(miners) { miner in
                         MinerHashOpsCompactTile(miner: miner)
                             .id(miner.macAddress)  // Use stable identifier
                             .listRowSeparator(.hidden)
-                        //            MinerHashOpsSummaryView(miner: miner)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 selectedMiner = miner
                             }
-
                     }
                 }.padding(.top, 16)
                     .sheet(item: $selectedMiner) { miner in
@@ -42,19 +44,13 @@ struct HashOpsView: View {
                         })
                         .frame(width: 800, height: 800)
                     }
-                
             }
         }
-        .onChange(of: allMiners.count) { _, newCount in
-            // Only update when the number of miners changes (not when updates are added)
-            updateStableMiners()
-        }
-        .onChange(of: allMiners.map(\.id)) { _, _ in
-            // Update when miners are added/removed/changed
-            updateStableMiners()
-        }
         .onAppear {
-            updateStableMiners()
+            loadMiners()
+        }
+        .onReceive(updatePublisher) { _ in
+            loadMiners()
         }
         .background(
             Image("circuit")
@@ -66,18 +62,25 @@ struct HashOpsView: View {
                 .opacity(0.5)
         )
     }
-    
-    private func updateStableMiners() {
-        // Only update if the miners actually changed
-        let newMinerIds = Set(allMiners.map(\.id))
-        let currentMinerIds = Set(stableMiners.map(\.id))
-        
-        if newMinerIds != currentMinerIds {
-            stableMiners = allMiners
-            print("Updated stable miners list: \(allMiners.count) miners")
+
+    private func loadMiners() {
+        do {
+            var descriptor = FetchDescriptor<Miner>(
+                sortBy: [SortDescriptor(\.hostName)]
+            )
+            let fetchedMiners = try modelContext.fetch(descriptor)
+
+            // Only update if the miners actually changed
+            let newMinerIds = Set(fetchedMiners.map(\.macAddress))
+            let currentMinerIds = Set(miners.map(\.macAddress))
+
+            if newMinerIds != currentMinerIds {
+                miners = fetchedMiners
+            }
+        } catch {
+            print("Error loading miners: \(error)")
         }
     }
-
 }
 
 let backgroundGradient = LinearGradient(

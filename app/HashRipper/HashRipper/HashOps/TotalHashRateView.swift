@@ -5,39 +5,21 @@
 //  Created by Matt Sellars
 //
 
+import Combine
 import SwiftData
 import SwiftUI
 
 struct TotalHashRateView: View {
     @Environment(\.modelContext) private var modelContext
-    
-    init(){}
 
-    @Query var miners: [Miner]
-    
-    @State private var stats = AggregateStats(hashRate: 0, power: 0, voltage: 0)
-    @State private var debounceTask: Task<Void, Never>?
-    @State private var latestUpdatesByMiner: [String: MinerUpdate] = [:]
-    
-    private func calculateStats() -> AggregateStats {
-        var totalHashrate: Double = 0.0
-        
-        // Use cached latest updates for each miner
-        miners.forEach { miner in
-            if let latestUpdate = latestUpdatesByMiner[miner.macAddress] {
-                totalHashrate += latestUpdate.hashRate
-            }
-        }
-        
-        return AggregateStats(
-            hashRate: totalHashrate,
-            power: 0, 
-            voltage: 0
-        )
-    }
+    @State private var totalHashRate: Double = 0
+
+    private let updatePublisher = NotificationCenter.default
+        .publisher(for: .minerUpdateInserted)
+        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
 
     var data: (rateString: String, rateSuffix: String, rateValue: Double) {
-        formatMinerHashRate(rawRateValue: stats.hashRate)
+        formatMinerHashRate(rawRateValue: totalHashRate)
     }
 
     var body: some View {
@@ -53,65 +35,48 @@ struct TotalHashRateView: View {
                 Text(data.rateString)
                     .font(.system(size: 36, weight: .light))
                     .fontDesign(.monospaced)
-                    .contentTransition(.numericText(value:data.rateValue))
+                    .contentTransition(.numericText(value: data.rateValue))
                     .minimumScaleFactor(0.6)
                 Text(data.rateSuffix)
                     .font(.callout)
                     .fontWeight(.heavy)
             }
         }
-        .onChange(of: miners.count) { _, _ in
-            // When miners are added/removed, reload all their latest updates
-            loadAllLatestUpdates()
-        }
         .onAppear {
-            loadAllLatestUpdates()
+            loadTotalHashRate()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { notification in
-            if let macAddress = notification.userInfo?["macAddress"] as? String {
-                updateMinerData(for: macAddress)
-            }
+        .onReceive(updatePublisher) { _ in
+            loadTotalHashRate()
         }
     }
-    
-    private func loadAllLatestUpdates() {
-        Task { @MainActor in
-            for miner in miners {
-                if let latestUpdate = miner.getLatestUpdate(from: modelContext) {
-                    latestUpdatesByMiner[miner.macAddress] = latestUpdate
-                }
-            }
-            updateStatsWithDebounce()
-        }
-    }
-    
-    private func updateMinerData(for macAddress: String) {
-        // Find the miner and get its latest update
-        guard let miner = miners.first(where: { $0.macAddress == macAddress }) else { return }
-        
-        Task { @MainActor in
-            if let latestUpdate = miner.getLatestUpdate(from: modelContext) {
-                latestUpdatesByMiner[macAddress] = latestUpdate
-                updateStatsWithDebounce()
-            }
-        }
-    }
-    
-    private func updateStatsWithDebounce() {
-        // Cancel any existing debounce task
-        debounceTask?.cancel()
-        
-        debounceTask = Task { @MainActor in
-            // Wait 500ms to batch multiple rapid updates
-            try? await Task.sleep(nanoseconds: 300_000_000)
 
-            if !Task.isCancelled {
-                DispatchQueue.main.async {
-                    withAnimation {
-                        stats = calculateStats()
-                    }
+    private func loadTotalHashRate() {
+        do {
+            // Fetch all miners
+            let miners: [Miner] = try modelContext.fetch(FetchDescriptor<Miner>())
+
+            var total: Double = 0
+            for miner in miners {
+                // Get latest update for each miner
+                let mac = miner.macAddress
+                var descriptor = FetchDescriptor<MinerUpdate>(
+                    predicate: #Predicate<MinerUpdate> { update in
+                        update.macAddress == mac
+                    },
+                    sortBy: [SortDescriptor(\.timestamp, order: .reverse)]
+                )
+                descriptor.fetchLimit = 1
+
+                if let latestUpdate = try modelContext.fetch(descriptor).first {
+                    total += latestUpdate.hashRate
                 }
             }
+
+            withAnimation {
+                totalHashRate = total
+            }
+        } catch {
+            print("Error loading total hash rate: \(error)")
         }
     }
 }
