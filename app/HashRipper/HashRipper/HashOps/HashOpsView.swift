@@ -64,21 +64,37 @@ struct HashOpsView: View {
     }
 
     private func loadMiners() {
-        do {
+        let container = modelContext.container
+        let currentMinerIds = miners.map(\.macAddress)
+
+        Task.detached {
+            let backgroundContext = ModelContext(container)
             var descriptor = FetchDescriptor<Miner>(
                 sortBy: [SortDescriptor(\.hostName)]
             )
-            let fetchedMiners = try modelContext.fetch(descriptor)
 
-            // Only update if the miners actually changed
-            let newMinerIds = Set(fetchedMiners.map(\.macAddress))
-            let currentMinerIds = Set(miners.map(\.macAddress))
+            do {
+                let fetchedMiners = try backgroundContext.fetch(descriptor)
+                let newMinerIds = fetchedMiners.map(\.macAddress)
 
-            if newMinerIds != currentMinerIds {
-                miners = fetchedMiners
+                // Only update on main thread if miners actually changed
+                if newMinerIds != currentMinerIds {
+                    await MainActor.run {
+                        do {
+                            let mainMiners = try modelContext.fetch(descriptor)
+                            EnsureUISafe {
+                                withAnimation {
+                                    miners = mainMiners
+                                }
+                            }
+                        } catch {
+                            print("Error loading miners on main thread: \(error)")
+                        }
+                    }
+                }
+            } catch {
+                print("Error loading miners in background: \(error)")
             }
-        } catch {
-            print("Error loading miners: \(error)")
         }
     }
 }
