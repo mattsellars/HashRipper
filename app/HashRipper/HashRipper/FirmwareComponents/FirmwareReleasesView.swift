@@ -16,10 +16,8 @@ struct FirmwareReleasesView: View {
     private var viewModel: FirmwareReleasesViewModel
 
     @State private var selectedRelease: FirmwareRelease?
-    
-    @Query(sort: \FirmwareRelease.releaseDate, order: .reverse)
-    private var allReleases: [FirmwareRelease]
-    
+    @State private var allReleases: [FirmwareRelease] = []
+
     // Cache stable releases and grouped data to prevent constant recalculation
     @State private var stableReleases: [FirmwareRelease] = []
     @State private var cachedReleasesGrouped: [String: [FirmwareRelease]] = [:]
@@ -63,17 +61,11 @@ struct FirmwareReleasesView: View {
                 }
             }
         }
-        .onChange(of: allReleases.count) { _, _ in
-            updateStableReleases()
-        }
-        .onChange(of: allReleases.map(\.id)) { _, _ in
-            updateStableReleases()
-        }
         .onChange(of: viewModel.showPreReleases) { _, _ in
             updateGroupedReleases()
         }
         .onAppear {
-            updateStableReleases()
+            loadReleases()
         }
         .task {
             viewModel.updateReleasesSources()
@@ -90,18 +82,52 @@ struct FirmwareReleasesView: View {
         return releasesGroupedByDeviceType[deviceModel]?.count ?? 0
     }
     
+    private func loadReleases() {
+        let container = modelContext.container
+        let currentReleaseIds = allReleases.map(\.id)
+
+        Task.detached {
+            let backgroundContext = ModelContext(container)
+            var descriptor = FetchDescriptor<FirmwareRelease>(
+                sortBy: [SortDescriptor(\.releaseDate, order: .reverse)]
+            )
+
+            do {
+                let fetchedReleases = try backgroundContext.fetch(descriptor)
+                let newReleaseIds = fetchedReleases.map(\.id)
+
+                // Only update on main thread if releases actually changed
+                if newReleaseIds != currentReleaseIds {
+                    await MainActor.run {
+                        do {
+                            let mainReleases = try modelContext.fetch(descriptor)
+                            EnsureUISafe {
+                                allReleases = mainReleases
+                                updateStableReleases()
+                            }
+                        } catch {
+                            print("Error loading firmware releases on main thread: \(error)")
+                        }
+                    }
+                }
+            } catch {
+                print("Error loading firmware releases in background: \(error)")
+            }
+        }
+    }
+
     private func updateStableReleases() {
         // Only update if firmware releases actually changed
         let newReleaseIds = Set(allReleases.map(\.id))
         let currentReleaseIds = Set(stableReleases.map(\.id))
-        
+
         if newReleaseIds != currentReleaseIds {
             stableReleases = allReleases
             print("Updated firmware releases: \(allReleases.count) releases")
             updateGroupedReleases()
         }
     }
-    
+
     private func updateGroupedReleases() {
         // Recalculate grouped releases when needed
         let currentReleases = releases

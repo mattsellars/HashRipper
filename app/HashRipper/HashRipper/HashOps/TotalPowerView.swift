@@ -5,7 +5,6 @@
 //  Created by Matt Sellars
 //
 
-import Combine
 import SwiftData
 import SwiftUI
 
@@ -15,10 +14,7 @@ struct TotalPowerView: View {
     @State private var totalPower: Double = 0
     @State private var totalVoltage: Double = 0
     @State private var totalAmps: Double = 0
-
-    private let updatePublisher = NotificationCenter.default
-        .publisher(for: .minerUpdateInserted)
-        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+    @State private var debounceTask: Task<Void, Never>?
 
     var wattsData: (rateString: String, rateSuffix: String, rateValue: Double) {
         (String(format: "%.1f", totalPower), "W", totalPower)
@@ -77,8 +73,17 @@ struct TotalPowerView: View {
         .onAppear {
             loadTotalPower()
         }
-        .onReceive(updatePublisher) { _ in
-            loadTotalPower()
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { _ in
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !Task.isCancelled {
+                    loadTotalPower()
+                }
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
     }
 

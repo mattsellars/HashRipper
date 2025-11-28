@@ -5,7 +5,6 @@
 //  Created by Matt Sellars
 //
 
-import Combine
 import SwiftData
 import SwiftUI
 
@@ -14,10 +13,7 @@ struct HashOpsView: View {
 
     @State private var selectedMiner: Miner? = nil
     @State private var miners: [Miner] = []
-
-    private let updatePublisher = NotificationCenter.default
-        .publisher(for: .minerUpdateInserted)
-        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+    @State private var debounceTask: Task<Void, Never>?
 
     var body: some View {
         VStack {
@@ -49,8 +45,17 @@ struct HashOpsView: View {
         .onAppear {
             loadMiners()
         }
-        .onReceive(updatePublisher) { _ in
-            loadMiners()
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { _ in
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !Task.isCancelled {
+                    loadMiners()
+                }
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
         .background(
             Image("circuit")

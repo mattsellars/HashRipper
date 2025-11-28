@@ -99,7 +99,7 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
     public let temp: Double?
     public let vrTemp: Double?
     public let fanrpm: Int?
-    public let fanspeed: Int?
+    public let fanspeed: Double?
     public let macAddr: String
 
     // Bitaxe
@@ -182,7 +182,7 @@ public struct AxeOSDeviceInfo: Codable, Sendable {
             temp = try? commonContainer.decode(Double.self, forKey: CommonCodingKeys.temp)
             vrTemp = try? commonContainer.decode(Double.self, forKey: CommonCodingKeys.vrTemp)
             fanrpm = try? commonContainer.decode(Int.self, forKey: CommonCodingKeys.fanrpm)
-            fanspeed = try? commonContainer.decode(Int.self, forKey: CommonCodingKeys.fanspeed)
+            fanspeed = try? commonContainer.decode(Double.self, forKey: CommonCodingKeys.fanspeed)
             macAddr = try commonContainer.decode(String.self, forKey: CommonCodingKeys.macAddr)
 
             // Bitaxe

@@ -5,7 +5,6 @@
 //  Created by Matt Sellars
 //
 
-import Combine
 import SwiftData
 import SwiftUI
 
@@ -13,10 +12,7 @@ struct TotalMinersView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var minerCount: Int = 0
-
-    private let updatePublisher = NotificationCenter.default
-        .publisher(for: .minerUpdateInserted)
-        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+    @State private var debounceTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,8 +34,17 @@ struct TotalMinersView: View {
         .onAppear {
             loadMinerCount()
         }
-        .onReceive(updatePublisher) { _ in
-            loadMinerCount()
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { _ in
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !Task.isCancelled {
+                    loadMinerCount()
+                }
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
     }
 

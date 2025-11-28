@@ -767,10 +767,10 @@ struct HashRateFrequencyMetricCardView: View {
 
 struct FanMetricCardView: View {
     let rpm: Int
-    let speedPercent: Int
+    let speedPercent: Double
 
     @State private var displayedRpm: Int = 0
-    @State private var displayedSpeed: Int = 0
+    @State private var displayedSpeed: Double = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -809,7 +809,7 @@ struct FanMetricCardView: View {
                     Image(systemName: "percent")
                         .font(.caption)
                         .foregroundStyle(.cyan)
-                    Text("\(displayedSpeed)")
+                    Text(String(format: "%.1f", displayedSpeed))
                         .font(.callout)
                         .fontWeight(.semibold)
                         .fontDesign(.monospaced)

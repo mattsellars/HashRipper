@@ -80,6 +80,7 @@ struct NewDeploymentWizard: View {
     @State private var model: NewDeploymentWizardModel
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var isStartingDeployment = false
 
     init(firmwareRelease: FirmwareRelease) {
         self._model = State(initialValue: NewDeploymentWizardModel(firmwareRelease: firmwareRelease))
@@ -166,12 +167,12 @@ struct NewDeploymentWizard: View {
             Spacer()
 
             if model.stage == .confirm {
-                Button("Start Deployment") {
+                Button(isStartingDeployment ? "Starting..." : "Start Deployment") {
                     startDeployment()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
-                .disabled(model.selectedMinerIPs.isEmpty)
+                .disabled(model.selectedMinerIPs.isEmpty || isStartingDeployment)
             } else {
                 Button("Next") {
                     model.nextStage()
@@ -197,6 +198,10 @@ struct NewDeploymentWizard: View {
     }
 
     private func startDeployment() {
+        // Prevent duplicate submissions
+        guard !isStartingDeployment else { return }
+        isStartingDeployment = true
+
         Task {
             do {
                 // Get selected miners
@@ -235,8 +240,11 @@ struct NewDeploymentWizard: View {
                 }
 
             } catch {
-                errorMessage = "Failed to start deployment: \(error.localizedDescription)"
-                showError = true
+                await MainActor.run {
+                    isStartingDeployment = false
+                    errorMessage = "Failed to start deployment: \(error.localizedDescription)"
+                    showError = true
+                }
             }
         }
     }

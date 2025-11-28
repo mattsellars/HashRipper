@@ -5,7 +5,6 @@
 //  Created by Matt Sellars
 //
 
-import Combine
 import SwiftData
 import SwiftUI
 
@@ -13,10 +12,7 @@ struct TotalHashRateView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var totalHashRate: Double = 0
-
-    private let updatePublisher = NotificationCenter.default
-        .publisher(for: .minerUpdateInserted)
-        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+    @State private var debounceTask: Task<Void, Never>?
 
     var data: (rateString: String, rateSuffix: String, rateValue: Double) {
         formatMinerHashRate(rawRateValue: totalHashRate)
@@ -45,8 +41,18 @@ struct TotalHashRateView: View {
         .onAppear {
             loadTotalHashRate()
         }
-        .onReceive(updatePublisher) { _ in
-            loadTotalHashRate()
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { _ in
+            // Cancel previous debounce task and create a new one
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                if !Task.isCancelled {
+                    loadTotalHashRate()
+                }
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
     }
 

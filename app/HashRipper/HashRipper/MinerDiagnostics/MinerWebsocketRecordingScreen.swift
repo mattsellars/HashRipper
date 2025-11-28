@@ -4,11 +4,12 @@
 //
 //  Created by Matt Sellars on 7/30/25.
 //
-import Combine
-import SwiftUI
-import AxeOSClient
-import SwiftData
 import AppKit
+import AxeOSClient
+import Combine
+import OSLog
+import SwiftData
+import SwiftUI
 
 struct MinerWebsocketRecordingScreen: View {
     static let windowGroupId = "HashRipper.MinerWebsocketRecordingScreen"
@@ -107,6 +108,10 @@ struct WebsocketFileOrStartRecordingView: View {
                 .padding(EdgeInsets(top: 0, leading: 0, bottom: 12, trailing: 0))
             }
         }
+        .onAppear {
+            // Sync state in case session state changed while view was not visible
+            viewModel.syncStateFromSession()
+        }
     }
 
     func showInFinder(fileURL: URL) {
@@ -132,25 +137,45 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
         self.minerIpAddress = minerIpAddress
         self.session = session
         self.recordingState = session.state
+        self.isRecording = session.state != .idle
+
+        Logger.viewModelLogger.debug("MinerSelectionViewModel init for \(minerIpAddress), session.state: \(String(describing: session.state))")
 
         session.recordingPublisher
             .receive(on: DispatchQueue.main)
-            .sink {
-                self.recordingState = $0
-                self.isRecording = $0 != .idle
+            .sink { [weak self] newState in
+                guard let self = self else { return }
+                Logger.viewModelLogger.debug("recordingPublisher received state: \(String(describing: newState)) for \(self.minerIpAddress)")
+                self.recordingState = newState
+                self.isRecording = newState != .idle
             }
             .store(in: &cancellables)
-        
+
         session.messagePublisher
             .receive(on: DispatchQueue.main)
-            .sink { message in
-                self.websocketMessages.append(message)
+            .sink { [weak self] message in
+                self?.websocketMessages.append(message)
             }
             .store(in: &cancellables)
     }
-    
+
+    deinit {
+        Logger.viewModelLogger.debug("MinerSelectionViewModel deinit for \(self.minerIpAddress)")
+    }
+
     func clearMessages() {
         websocketMessages.removeAll()
+    }
+
+    /// Syncs the view model state with the session's actual state
+    func syncStateFromSession() {
+        let currentSessionState = session.state
+        Logger.viewModelLogger.debug("syncStateFromSession for \(self.minerIpAddress): session.state=\(String(describing: currentSessionState)), recordingState=\(String(describing: self.recordingState))")
+        if recordingState != currentSessionState {
+            Logger.viewModelLogger.debug("State mismatch detected, updating to \(String(describing: currentSessionState))")
+            recordingState = currentSessionState
+            isRecording = currentSessionState != .idle
+        }
     }
 
     convenience init(minerHostName: String, minerIpAddress: String, registry: MinerWebsocketRecordingSessionRegistry) {
@@ -163,6 +188,10 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
             )
         )
     }
+}
+
+fileprivate extension Logger {
+    static let viewModelLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HashRipper", category: "MinerSelectionViewModel")
 }
 
 struct MinerPickerSelectionView: View {

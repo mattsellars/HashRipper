@@ -14,6 +14,7 @@ struct DeploymentDetailView: View {
     @State private var minerDeployments: [MinerFirmwareDeployment] = []
     @State private var isDeploymentActive: Bool = false
     @State private var stateHolder: DeploymentStateHolder?
+    @State private var debounceTask: Task<Void, Never>?
 
     init(deployment: FirmwareDeployment) {
         self.deployment = deployment
@@ -131,15 +132,25 @@ struct DeploymentDetailView: View {
             stateHolder = store.getStateHolder(for: deployment.persistentModelID)
         }
         .onReceive(NotificationCenter.default.publisher(for: .deploymentUpdated)) { _ in
-            // Refresh state holder when deployment updates
-            stateHolder = store.getStateHolder(for: deployment.persistentModelID)
-            loadMinerDeployments()
+            // Refresh state holder when deployment updates (debounced to prevent CPU spike)
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+                if !Task.isCancelled {
+                    stateHolder = store.getStateHolder(for: deployment.persistentModelID)
+                    loadMinerDeployments()
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .deploymentCompleted)) { _ in
-            // Refresh when deployment completes
+            // Refresh when deployment completes (immediate, no debounce)
+            debounceTask?.cancel()
             isDeploymentActive = deployment.isActive
             stateHolder = store.getStateHolder(for: deployment.persistentModelID)
             loadMinerDeployments()
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
     }
 

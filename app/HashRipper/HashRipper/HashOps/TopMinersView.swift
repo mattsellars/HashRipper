@@ -5,7 +5,6 @@
 //  Created by Matt Sellars
 //
 
-import Combine
 import SwiftData
 import SwiftUI
 
@@ -13,10 +12,7 @@ struct TopMinersView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var topMiners: [TopMinerData] = []
-
-    private let updatePublisher = NotificationCenter.default
-        .publisher(for: .minerUpdateInserted)
-        .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+    @State private var debounceTask: Task<Void, Never>?
 
     struct TopMinerData: Identifiable {
         var id: String { macAddress }
@@ -87,8 +83,17 @@ struct TopMinersView: View {
         .onAppear {
             loadTopMiners()
         }
-        .onReceive(updatePublisher) { _ in
-            loadTopMiners()
+        .onReceive(NotificationCenter.default.publisher(for: .minerUpdateInserted)) { _ in
+            debounceTask?.cancel()
+            debounceTask = Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if !Task.isCancelled {
+                    loadTopMiners()
+                }
+            }
+        }
+        .onDisappear {
+            debounceTask?.cancel()
         }
     }
 

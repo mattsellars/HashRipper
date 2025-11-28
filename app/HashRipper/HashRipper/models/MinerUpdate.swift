@@ -26,7 +26,7 @@ final class MinerUpdate {
     public var temp: Double?
     public var vrTemp: Double?
     public var fanrpm: Int?
-    public var fanspeed: Int?
+    public var fanspeed: Double?
     public var hashRate: Double
     public var power: Double
     public var sharesAccepted: Int?
@@ -56,7 +56,7 @@ final class MinerUpdate {
         temp: Double? = nil,
         vrTemp: Double? = nil,
         fanrpm: Int? = nil,
-        fanspeed: Int? = nil,
+        fanspeed: Double? = nil,
         hashRate: Double,
         power: Double,
         sharesAccepted: Int? = nil,
