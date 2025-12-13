@@ -78,7 +78,7 @@ struct WebsocketFileOrStartRecordingView: View {
                             viewModel.clearMessages()
                             Task { await viewModel.session.startRecording() }
                         },
-                        label: { Text("Start websocket data capture") }
+                        label: { Text("View websocket logs") }
                     )
                 }
                 VStack {
@@ -86,26 +86,68 @@ struct WebsocketFileOrStartRecordingView: View {
                 }.background(Color.black)
                     .padding(12)
             case .recording(let file):
-                HStack {
-                    Text("Recording to \(file)")
-                    Button(
-                        action: {
-                            showInFinder(fileURL: file)
-                        },
-                        label: {
-                            Text("Show in Finder")
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Viewing websocket logs")
+                            .font(.headline)
+                        Spacer()
+
+                        // File recording toggle
+                        Button(
+                            action: {
+                                Task { await viewModel.session.toggleFileWriting() }
+                            },
+                            label: {
+                                if viewModel.session.isWritingToFile {
+                                    Label("Stop File Recording", systemImage: "stop.circle.fill")
+                                        .foregroundStyle(.red)
+                                } else {
+                                    Label("Record to File", systemImage: "record.circle")
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        )
+
+                        // Show in Finder button (only visible when writing to file)
+                        if let fileURL = viewModel.session.currentFileURL {
+                            Button(
+                                action: {
+                                    showInFinder(fileURL: fileURL)
+                                },
+                                label: {
+                                    Label("Show in Finder", systemImage: "folder")
+                                }
+                            )
                         }
-                    )
+
+                        Button(
+                            action: {
+                                Task { await viewModel.session.stopRecording() }
+                            },
+                            label: {
+                                Label("Stop", systemImage: "stop.fill")
+                                    .foregroundStyle(.red)
+                            }
+                        )
+                    }
+                    .padding(.horizontal, 12)
+
+                    // File status display
+                    if let fileURL = viewModel.session.currentFileURL {
+                        HStack {
+                            Image(systemName: "doc.text.fill")
+                                .foregroundStyle(.green)
+                            Text("Writing to: \(fileURL.lastPathComponent)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                    }
+
+                    WebsocketMessagesView(viewModel: viewModel)
+                        .padding(12)
                 }
-                WebsocketMessagesView(viewModel: viewModel)
-                    .padding(12)
-                Button(
-                    action: {
-                        Task { await viewModel.session.stopRecording() }
-                    },
-                    label: { Text("Stop recording") }
-                )
-                .padding(EdgeInsets(top: 0, leading: 0, bottom: 12, trailing: 0))
             }
         }
         .onAppear {
@@ -120,13 +162,19 @@ struct WebsocketFileOrStartRecordingView: View {
 }
 
 
+@MainActor
 class MinerSelectionViewModel: ObservableObject, Identifiable {
     var id: String { minerIpAddress }
 
     @Published var isRecording: Bool = false
     var cancellables: Set<AnyCancellable> = []
     @Published var recordingState: MinerWebsocketDataRecordingSession.RecordingState
-    @Published var websocketMessages: [String] = []
+    @Published var logEntries: [WebSocketLogEntry] = []
+
+    // Filtering
+    @Published var selectedLevels: Set<WebSocketLogEntry.LogLevel> = []
+    @Published var selectedComponent: WebSocketLogEntry.LogComponent? = nil
+    @Published var searchText: String = ""
 
     let minerHostName: String
     let minerIpAddress: String
@@ -141,6 +189,7 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
 
         Logger.viewModelLogger.debug("MinerSelectionViewModel init for \(minerIpAddress), session.state: \(String(describing: session.state))")
 
+        // Subscribe to recording state changes
         session.recordingPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] newState in
@@ -151,12 +200,21 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
             }
             .store(in: &cancellables)
 
-        session.messagePublisher
+        // Subscribe to structured log entries
+        session.logStore.entriesPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] message in
-                self?.websocketMessages.append(message)
+            .sink { [weak self] entries in
+                self?.logEntries = entries
             }
             .store(in: &cancellables)
+
+        // Load existing entries from logStore on init
+        Task {
+            let existingEntries = await session.logStore.getEntries()
+            await MainActor.run {
+                self.logEntries = existingEntries
+            }
+        }
     }
 
     deinit {
@@ -164,7 +222,54 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
     }
 
     func clearMessages() {
-        websocketMessages.removeAll()
+        Task {
+            await session.logStore.clear()
+        }
+    }
+
+    var filteredLogEntries: [WebSocketLogEntry] {
+        var filtered = logEntries
+
+        // Filter by level - if selectedLevels is empty, show all; otherwise only show selected
+        if !selectedLevels.isEmpty {
+            filtered = filtered.filter { selectedLevels.contains($0.level) }
+        }
+
+        if let component = selectedComponent {
+            filtered = filtered.filter { $0.component == component }
+        }
+
+        if !searchText.isEmpty {
+            filtered = filtered.filter {
+                $0.message.localizedCaseInsensitiveContains(searchText) ||
+                $0.rawText.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+
+        return filtered
+    }
+
+    func isLevelEnabled(_ level: WebSocketLogEntry.LogLevel) -> Bool {
+        // If no levels are selected, all are enabled (showing all logs)
+        if selectedLevels.isEmpty {
+            return true
+        }
+        // Otherwise, only selected levels are enabled
+        return selectedLevels.contains(level)
+    }
+
+    func toggleLevel(_ level: WebSocketLogEntry.LogLevel) {
+        if selectedLevels.isEmpty {
+            // If all are currently shown, clicking one means "show only this one"
+            // Actually, let's disable just this one and enable all others
+            selectedLevels = Set(WebSocketLogEntry.LogLevel.allCases.filter { $0 != level })
+        } else if selectedLevels.contains(level) {
+            // Remove this level from the filter
+            selectedLevels.remove(level)
+        } else {
+            // Add this level to the filter
+            selectedLevels.insert(level)
+        }
     }
 
     /// Syncs the view model state with the session's actual state
@@ -299,33 +404,160 @@ struct WebsocketMessagesView: View {
     @ObservedObject
     var viewModel: MinerSelectionViewModel
 
+    private func colorForLevel(_ level: WebSocketLogEntry.LogLevel) -> Color {
+        switch level {
+        case .error: return .red
+        case .warning: return .yellow
+        case .info: return .green
+        case .debug: return .cyan
+        case .verbose: return .white
+        }
+    }
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(viewModel.websocketMessages.enumerated()), id: \.0) { index, message in
-                        Text(message)
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundColor(.green)
-                            .padding(.horizontal, 4)
-                            .id(index)
+        VStack(spacing: 0) {
+            // Filter controls
+            HStack(spacing: 12) {
+                // Search field
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search logs...", text: $viewModel.searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(6)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(6)
+                .frame(maxWidth: 300)
+
+                // Level filter toggle buttons
+                HStack(spacing: 4) {
+                    ForEach(WebSocketLogEntry.LogLevel.allCases, id: \.self) { level in
+                        LevelToggleButton(
+                            level: level,
+                            isEnabled: viewModel.isLevelEnabled(level),
+                            action: {
+                                viewModel.toggleLevel(level)
+                            }
+                        )
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 8)
+
+                // Clear filters button
+                if !viewModel.selectedLevels.isEmpty || !viewModel.searchText.isEmpty {
+                    Button("Clear Filters") {
+                        viewModel.selectedLevels.removeAll()
+                        viewModel.searchText = ""
+                    }
+                    .buttonStyle(.borderless)
+                }
+
+                Spacer()
+
+                // Entry count
+                Text("\(viewModel.filteredLogEntries.count) entries")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-            .onChange(of: viewModel.websocketMessages.count) { _ in
-                if let lastIndex = viewModel.websocketMessages.indices.last {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        proxy.scrollTo(lastIndex, anchor: .bottom)
+            .padding(8)
+            .background(Color.black.opacity(0.3))
+
+            // Log entries
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(viewModel.filteredLogEntries.enumerated()), id: \.1.id) { index, entry in
+                            LogEntryRow(entry: entry)
+                                .id(entry.id)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+                .onChange(of: viewModel.filteredLogEntries.count) { _ in
+                    if let lastEntry = viewModel.filteredLogEntries.last {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(lastEntry.id, anchor: .bottom)
+                        }
                     }
                 }
             }
         }
     }
 }
+
+/// A toggle button for filtering log levels
+struct LevelToggleButton: View {
+    let level: WebSocketLogEntry.LogLevel
+    let isEnabled: Bool
+    let action: () -> Void
+
+    private var backgroundColor: Color {
+        switch level {
+        case .error: return .red
+        case .warning: return .yellow
+        case .info: return .green
+        case .debug: return .cyan
+        case .verbose: return .white
+        }
+    }
+
+    private var tooltip: String {
+        let status = isEnabled ? "Hide" : "Show"
+        return "\(status) \(level.displayName) logs"
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(level.rawValue)
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.bold)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(backgroundColor.opacity(isEnabled ? 1.0 : 0.3))
+                .foregroundColor(isEnabled ? .black : .gray)
+                .cornerRadius(4)
+        }
+        .buttonStyle(.plain)
+        .help(tooltip)
+    }
+}
+
+/// A view that displays a single log entry with color coding
+struct LogEntryRow: View {
+    let entry: WebSocketLogEntry
+
+    var body: some View {
+        Text(cleanedMessage)
+            .font(.system(.body, design: .monospaced))
+            .foregroundColor(colorForLevel(entry.level))
+            .padding(.horizontal, 4)
+            .textSelection(.enabled)
+    }
+
+    private var cleanedMessage: String {
+        // Remove all ANSI escape codes from the raw text
+        let pattern = #"\[[0-9;]+m"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return entry.rawText
+        }
+        let range = NSRange(entry.rawText.startIndex..., in: entry.rawText)
+        return regex.stringByReplacingMatches(in: entry.rawText, range: range, withTemplate: "")
+    }
+
+    private func colorForLevel(_ level: WebSocketLogEntry.LogLevel) -> Color {
+        switch level {
+        case .error: return .red
+        case .warning: return .yellow
+        case .info: return .green
+        case .debug: return .cyan
+        case .verbose: return .white
+        }
+    }
+}
+
 
 //struct FileTailView: View {
 //    @ObservedObject var fileWatcher: FileWatcher

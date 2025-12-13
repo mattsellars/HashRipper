@@ -130,6 +130,24 @@ class AppSettings {
         }
     }
 
+    @ObservationIgnored
+    private let websocketLogBufferSizeKey = "websocketLogBufferSize"
+    var websocketLogBufferSize: Int {
+        get {
+            let size = userDefaults.integer(forKey: websocketLogBufferSizeKey)
+            // Default to 1000, ensure it's within valid range (100-10000)
+            if size == 0 {
+                return 1000
+            }
+            return min(max(size, 100), 10000)
+        }
+        set {
+            // Clamp value to valid range
+            let clampedValue = min(max(newValue, 100), 10000)
+            userDefaults.set(clampedValue, forKey: websocketLogBufferSizeKey)
+        }
+    }
+
     // MARK: - WatchDog Settings
     
     @ObservationIgnored

@@ -15,6 +15,7 @@ struct GeneralSettingsView: View {
     @State private var isStatusBarEnabled: Bool = true
     @State private var offlineThreshold: Int = 5
     @State private var usePersistentDeployments: Bool = false
+    @State private var websocketLogBufferSize: Int = 1000
     
     var body: some View {
         Form {
@@ -147,6 +148,43 @@ struct GeneralSettingsView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
+                            Text("Websocket Log Buffer Size")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(websocketLogBufferSize) entries")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(websocketLogBufferSize) },
+                                set: { websocketLogBufferSize = Int($0) }
+                            ),
+                            in: 100...10000,
+                            step: 100
+                        ) {
+                            Text("Websocket Log Buffer Size")
+                        } minimumValueLabel: {
+                            Text("100")
+                                .font(.caption)
+                        } maximumValueLabel: {
+                            Text("10k")
+                                .font(.caption)
+                        }
+                        .onChange(of: websocketLogBufferSize) { _, newValue in
+                            settings.websocketLogBufferSize = newValue
+                        }
+
+                        Text("Maximum number of websocket log entries to keep in memory. Higher values allow viewing more history but use more memory.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
                             Text("Use New Deployment System (Beta)")
                                 .font(.headline)
                             Spacer()
@@ -197,6 +235,7 @@ struct GeneralSettingsView: View {
             isStatusBarEnabled = settings.isStatusBarEnabled
             offlineThreshold = settings.offlineThreshold
             usePersistentDeployments = settings.usePersistentDeployments
+            websocketLogBufferSize = settings.websocketLogBufferSize
         }
     }
 }

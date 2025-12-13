@@ -10,15 +10,16 @@ import Foundation
 import AxeOSClient
 import OSLog
 
-class MinerWebsocketDataRecordingSession {
+@MainActor
+class MinerWebsocketDataRecordingSession: ObservableObject {
     public enum RecordingState: Hashable {
         case idle
-        case recording(file: URL)
+        case recording(file: URL?)  // File is optional now
     }
 
     static let filenameDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd_HH:mm"
+        formatter.dateFormat = "yyyy-MM-dd_HH:mm:ss"  // Added seconds
         return formatter
     }()
 
@@ -33,6 +34,19 @@ class MinerWebsocketDataRecordingSession {
     public var messagePublisher: AnyPublisher<String, Never> {
         messageSubject.eraseToAnyPublisher()
     }
+
+    // Structured logging components
+    private let parser = WebSocketLogParser()
+    public let logStore = StructuredLogStore()  // Public for ViewModel access
+
+    private let structuredLogSubject = PassthroughSubject<WebSocketLogEntry, Never>()
+    public var structuredLogPublisher: AnyPublisher<WebSocketLogEntry, Never> {
+        structuredLogSubject.eraseToAnyPublisher()
+    }
+
+    // File writing configuration
+    @Published public var isWritingToFile: Bool = false
+    @Published public var currentFileURL: URL?  // Public and Published for UI binding
 
 //    public let miner: Miner
     public let minerHostName: String
@@ -60,7 +74,24 @@ class MinerWebsocketDataRecordingSession {
             messageForwardingCancellable = (await websocketClient.messagePublisher)
                 .filter({ !$0.isEmpty })
                 .sink { [weak self] message in
-                    self?.messageSubject.send(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                    guard let self = self else { return }
+
+                    let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    // Send raw message for backward compatibility
+                    Task { @MainActor in
+                        self.messageSubject.send(trimmed)
+                    }
+
+                    // Parse and publish structured log
+                    Task {
+                        if let entry = await self.parser.parse(trimmed) {
+                            await self.logStore.append(entry)
+                            await MainActor.run {
+                                self.structuredLogSubject.send(entry)
+                            }
+                        }
+                    }
                 }
             Logger.sessionLogger.debug("Message forwarding subscription established for \(self.minerIpAddress)")
         }
@@ -86,13 +117,8 @@ class MinerWebsocketDataRecordingSession {
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
         }
 
-        let fileName = "\(Self.filenameDateFormatter.string(from: Date()))-\(minerHostName)-websocket-data.txt"
-        let fileUrl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(fileName)
-        Logger.sessionLogger.debug("Starting websocket data recording to \(fileUrl)")
-        self.recordingFileWriter = .init(fileURL: fileUrl)
-        self.recordingFileWriter?.startLogging(from: messagePublisher)
-        self.state = .recording(file: fileUrl)
+        // Don't create file by default - user toggles file writing
+        self.state = .recording(file: nil)
         recordingStateSubject.send(state)
 
         Logger.sessionLogger.debug("Connecting websocket to \(self.websocketUrl)")
@@ -102,14 +128,20 @@ class MinerWebsocketDataRecordingSession {
 
     func stopRecording() async {
         Logger.sessionLogger.debug("stopRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
+
+        // Stop file writing if enabled
+        if isWritingToFile {
+            stopFileWriting()
+        }
+
         self.state = .idle
 
         Logger.sessionLogger.debug("Closing websocket for \(self.minerIpAddress)")
         await self.websocketClient.close()
         Logger.sessionLogger.debug("Websocket closed for \(self.minerIpAddress)")
 
-        self.recordingFileWriter?.stopLogging()
-        self.recordingFileWriter = nil
+        // Clear in-memory logs
+        await logStore.clear()
 
         // Cancel message forwarding so it can be re-established on next recording
         messageForwardingCancellable?.cancel()
@@ -121,9 +153,88 @@ class MinerWebsocketDataRecordingSession {
         recordingStateSubject.send(state)
         Logger.sessionLogger.debug("stopRecording() completed for \(self.minerIpAddress)")
     }
+
+    // MARK: - File Writing
+
+    func toggleFileWriting() async {
+        if isWritingToFile {
+            stopFileWriting()
+        } else {
+            startFileWriting()
+        }
+    }
+
+    private func startFileWriting() {
+        guard !isWritingToFile else { return }
+
+        // Generate unique filename with seconds
+        let fileName = generateUniqueFileName()
+        let fileUrl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(fileName)
+
+        Logger.sessionLogger.debug("Starting file writing to \(fileUrl)")
+
+        // Create file logger
+        self.recordingFileWriter = .init(fileURL: fileUrl)
+        self.currentFileURL = fileUrl
+
+        // Dump all in-memory logs to file first
+        Task {
+            await dumpInMemoryLogsToFile()
+        }
+
+        // Start logging new messages
+        self.recordingFileWriter?.startLogging(from: messagePublisher)
+        self.isWritingToFile = true
+
+        // Update state
+        self.state = .recording(file: fileUrl)
+        recordingStateSubject.send(state)
+
+        Logger.sessionLogger.debug("File writing started")
+    }
+
+    private func stopFileWriting() {
+        guard isWritingToFile else { return }
+
+        Logger.sessionLogger.debug("Stopping file writing")
+
+        self.recordingFileWriter?.stopLogging()
+        self.recordingFileWriter = nil
+        self.currentFileURL = nil
+        self.isWritingToFile = false
+
+        // Update state (recording but no file)
+        self.state = .recording(file: nil)
+        recordingStateSubject.send(state)
+
+        Logger.sessionLogger.debug("File writing stopped")
+    }
+
+    private func dumpInMemoryLogsToFile() async {
+        guard let fileURL = currentFileURL else { return }
+
+        // Get all in-memory logs
+        let entries = await logStore.getEntries()
+        let logsToWrite = entries.map { $0.rawText }.joined(separator: "\n")
+
+        if !logsToWrite.isEmpty {
+            if let data = "\(logsToWrite)\n".data(using: .utf8) {
+                try? data.write(to: fileURL)
+            }
+        }
+
+        Logger.sessionLogger.debug("Dumped \(entries.count) existing entries to file")
+    }
+
+    private func generateUniqueFileName() -> String {
+        let formatter = Self.filenameDateFormatter
+        return "\(formatter.string(from: Date()))-\(minerHostName)-websocket-data.txt"
+    }
 }
 
 
+@MainActor
 class MinerWebsocketRecordingSessionRegistry {
     let accessLock = UnfairLock()
     private var sessionsByMinerIpAddress: [String: MinerWebsocketDataRecordingSession] = [:]
