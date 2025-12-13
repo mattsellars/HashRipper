@@ -43,8 +43,11 @@ Step 2. Select Miners
 Step 3. Deploy
 <img width="1455" height="1006" alt="Screenshot 2025-07-12 at 8 20 25 PM" src="https://github.com/user-attachments/assets/8186a391-0125-494c-9c08-523e82a50e4b" />
 
-### Record Websocket data to a file
-<img width="1450" height="947" alt="Screenshot 2025-08-09 at 10 21 12 PM" src="https://github.com/user-attachments/assets/b75ea837-dfaa-4e78-a1c1-b8ef1ffeb086" />
+### Record Websocket data
+Stream web socket data to search/filter in real time and/or save out the raw logs to a file. You can select and copy text from the log in this view as well.
+<img width="1012" height="840" alt="Screenshot 2025-12-13 at 7 43 04 AM" src="https://github.com/user-attachments/assets/23c19f88-bea4-45bd-9b0d-6577d7edc9e5" />
+
+
 
 ### Firmware deployments Manager (New · Beta)
 Similar behavior to the original but now keeps historical data so you can go back to find which firmware was deployed to what miners and when it was deployed. The deployment process in the new manager is async and no longer blocks you from using the rest of the app. Simply close and come back later to see progress/result.
