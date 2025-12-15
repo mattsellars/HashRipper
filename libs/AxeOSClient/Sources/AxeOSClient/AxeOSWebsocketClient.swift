@@ -72,10 +72,10 @@ public actor AxeOSWebsocketClient {
                 let message = try await socket.receive()
                 switch message {
                 case .string(let text):
-                    Logger.websocketsLogger.debug("[ws::received::text] \(text)")
+//                    Logger.websocketsLogger.debug("[ws::received::text] \(text)")
                     self.messageSubject.send(text)
-                case .data(let data):
-                    Logger.websocketsLogger.debug("[ws::received::data] \(data.count) bytes")
+//                case .data(let data):
+//                    Logger.websocketsLogger.debug("[ws::received::data] \(data.count) bytes")
                 @unknown default:
                     break
                 }

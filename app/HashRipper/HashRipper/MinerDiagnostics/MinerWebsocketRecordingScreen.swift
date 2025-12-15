@@ -200,21 +200,13 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
             }
             .store(in: &cancellables)
 
-        // Subscribe to structured log entries
-        session.logStore.entriesPublisher
+        // Subscribe to structured log entries as they arrive
+        session.structuredLogPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] entries in
-                self?.logEntries = entries
+            .sink { [weak self] entry in
+                self?.logEntries.append(entry)
             }
             .store(in: &cancellables)
-
-        // Load existing entries from logStore on init
-        Task {
-            let existingEntries = await session.logStore.getEntries()
-            await MainActor.run {
-                self.logEntries = existingEntries
-            }
-        }
     }
 
     deinit {
@@ -222,9 +214,7 @@ class MinerSelectionViewModel: ObservableObject, Identifiable {
     }
 
     func clearMessages() {
-        Task {
-            await session.logStore.clear()
-        }
+        logEntries.removeAll()
     }
 
     var filteredLogEntries: [WebSocketLogEntry] {
@@ -307,9 +297,9 @@ struct MinerPickerSelectionView: View {
     var body: some View {
         HStack {
             Text(viewModel.minerHostName).tag(viewModel.minerIpAddress)
-            // if recording use "record.circle.fill"
-            Image(systemName: viewModel.isRecording ? "record.circle.fill" : "record.circle")
-                .foregroundStyle(viewModel.isRecording ? .red : .gray)
+            // Show recording indicator
+            Image(systemName: viewModel.isRecording ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                .foregroundStyle(viewModel.isRecording ? .green : .gray)
         }
     }
 }

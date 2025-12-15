@@ -10,7 +10,6 @@ import Foundation
 import AxeOSClient
 import OSLog
 
-@MainActor
 class MinerWebsocketDataRecordingSession: ObservableObject {
     public enum RecordingState: Hashable {
         case idle
@@ -23,7 +22,11 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         return formatter
     }()
 
-    public private(set) var state: RecordingState = .idle
+    private let lock = UnfairLock()
+    private var _state: RecordingState = .idle
+    public var state: RecordingState {
+        lock.perform { _state }
+    }
 
     private let recordingStateSubject = PassthroughSubject<RecordingState, Never>()
     public var recordingPublisher: AnyPublisher<RecordingState, Never> {
@@ -37,24 +40,21 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
     // Structured logging components
     private let parser = WebSocketLogParser()
-    public let logStore = StructuredLogStore()  // Public for ViewModel access
 
     private let structuredLogSubject = PassthroughSubject<WebSocketLogEntry, Never>()
     public var structuredLogPublisher: AnyPublisher<WebSocketLogEntry, Never> {
         structuredLogSubject.eraseToAnyPublisher()
     }
 
-    // File writing configuration
+    // File writing configuration - updated on MainActor for UI
     @Published public var isWritingToFile: Bool = false
-    @Published public var currentFileURL: URL?  // Public and Published for UI binding
+    @Published public var currentFileURL: URL?
 
-//    public let miner: Miner
     public let minerHostName: String
     public let minerIpAddress: String
     public let websocketUrl: URL
 
     public let websocketClient: AxeOSWebsocketClient
-//    private var messageSubscription: AnyCancellable?
     private var cancellables: Set<AnyCancellable> = []
 
     init(minerHostName: String, minerIpAddress: String, websocketClient: AxeOSWebsocketClient) {
@@ -78,18 +78,13 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
                     let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
 
-                    // Send raw message for backward compatibility
-                    Task { @MainActor in
-                        self.messageSubject.send(trimmed)
-                    }
+                    // Send raw message
+                    self.messageSubject.send(trimmed)
 
                     // Parse and publish structured log
                     Task {
                         if let entry = await self.parser.parse(trimmed) {
-                            await self.logStore.append(entry)
-                            await MainActor.run {
-                                self.structuredLogSubject.send(entry)
-                            }
+                            self.structuredLogSubject.send(entry)
                         }
                     }
                 }
@@ -118,8 +113,9 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         }
 
         // Don't create file by default - user toggles file writing
-        self.state = .recording(file: nil)
-        recordingStateSubject.send(state)
+        let newState: RecordingState = .recording(file: nil)
+        lock.perform { _state = newState }
+        recordingStateSubject.send(newState)
 
         Logger.sessionLogger.debug("Connecting websocket to \(self.websocketUrl)")
         await self.websocketClient.connect(to: websocketUrl)
@@ -134,14 +130,11 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
             stopFileWriting()
         }
 
-        self.state = .idle
+        lock.perform { _state = .idle }
 
         Logger.sessionLogger.debug("Closing websocket for \(self.minerIpAddress)")
         await self.websocketClient.close()
         Logger.sessionLogger.debug("Websocket closed for \(self.minerIpAddress)")
-
-        // Clear in-memory logs
-        await logStore.clear()
 
         // Cancel message forwarding so it can be re-established on next recording
         messageForwardingCancellable?.cancel()
@@ -150,7 +143,7 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
-        recordingStateSubject.send(state)
+        recordingStateSubject.send(.idle)
         Logger.sessionLogger.debug("stopRecording() completed for \(self.minerIpAddress)")
     }
 
@@ -176,20 +169,20 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
         // Create file logger
         self.recordingFileWriter = .init(fileURL: fileUrl)
-        self.currentFileURL = fileUrl
-
-        // Dump all in-memory logs to file first
-        Task {
-            await dumpInMemoryLogsToFile()
-        }
 
         // Start logging new messages
         self.recordingFileWriter?.startLogging(from: messagePublisher)
-        self.isWritingToFile = true
 
         // Update state
-        self.state = .recording(file: fileUrl)
-        recordingStateSubject.send(state)
+        let newState: RecordingState = .recording(file: fileUrl)
+        lock.perform { _state = newState }
+        recordingStateSubject.send(newState)
+
+        // Update @Published on main thread for UI
+        Task { @MainActor [weak self] in
+            self?.currentFileURL = fileUrl
+            self?.isWritingToFile = true
+        }
 
         Logger.sessionLogger.debug("File writing started")
     }
@@ -201,30 +194,19 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
         self.recordingFileWriter?.stopLogging()
         self.recordingFileWriter = nil
-        self.currentFileURL = nil
-        self.isWritingToFile = false
 
         // Update state (recording but no file)
-        self.state = .recording(file: nil)
-        recordingStateSubject.send(state)
+        let newState: RecordingState = .recording(file: nil)
+        lock.perform { _state = newState }
+        recordingStateSubject.send(newState)
 
-        Logger.sessionLogger.debug("File writing stopped")
-    }
-
-    private func dumpInMemoryLogsToFile() async {
-        guard let fileURL = currentFileURL else { return }
-
-        // Get all in-memory logs
-        let entries = await logStore.getEntries()
-        let logsToWrite = entries.map { $0.rawText }.joined(separator: "\n")
-
-        if !logsToWrite.isEmpty {
-            if let data = "\(logsToWrite)\n".data(using: .utf8) {
-                try? data.write(to: fileURL)
-            }
+        // Update @Published on main thread for UI
+        Task { @MainActor [weak self] in
+            self?.currentFileURL = nil
+            self?.isWritingToFile = false
         }
 
-        Logger.sessionLogger.debug("Dumped \(entries.count) existing entries to file")
+        Logger.sessionLogger.debug("File writing stopped")
     }
 
     private func generateUniqueFileName() -> String {
@@ -234,12 +216,24 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 }
 
 
-@MainActor
 class MinerWebsocketRecordingSessionRegistry {
-    let accessLock = UnfairLock()
+    private let accessLock = UnfairLock()
     private var sessionsByMinerIpAddress: [String: MinerWebsocketDataRecordingSession] = [:]
+    private var recordingStateSubscriptions: [String: AnyCancellable] = [:]
 
     static let shared: MinerWebsocketRecordingSessionRegistry = .init()
+
+    // Notification when a session starts recording
+    private let sessionRecordingStartedSubject = PassthroughSubject<MinerWebsocketDataRecordingSession, Never>()
+    var sessionRecordingStartedPublisher: AnyPublisher<MinerWebsocketDataRecordingSession, Never> {
+        sessionRecordingStartedSubject.eraseToAnyPublisher()
+    }
+
+    // Notification when a session stops recording
+    private let sessionRecordingStoppedSubject = PassthroughSubject<String, Never>()  // IP address
+    var sessionRecordingStoppedPublisher: AnyPublisher<String, Never> {
+        sessionRecordingStoppedSubject.eraseToAnyPublisher()
+    }
 
     private init() {}
 
@@ -251,7 +245,35 @@ class MinerWebsocketRecordingSessionRegistry {
 
             let session = MinerWebsocketDataRecordingSession(minerHostName: minerHostName, minerIpAddress: minerIpAddress, websocketClient: AxeOSWebsocketClient())
             sessionsByMinerIpAddress[minerIpAddress] = session
+
+            // Subscribe to recording state changes
+            let subscription = session.recordingPublisher
+                .sink { [weak self, weak session] state in
+                    guard let self = self, let session = session else { return }
+                    switch state {
+                    case .recording:
+                        self.sessionRecordingStartedSubject.send(session)
+                    case .idle:
+                        self.sessionRecordingStoppedSubject.send(minerIpAddress)
+                    }
+                }
+            recordingStateSubscriptions[minerIpAddress] = subscription
+
             return session
+        }
+    }
+
+    /// Get all currently recording sessions
+    func getActiveRecordingSessions() -> [MinerWebsocketDataRecordingSession] {
+        accessLock.perform {
+            sessionsByMinerIpAddress.values.filter { $0.isRecording() }
+        }
+    }
+
+    /// Get session by IP address
+    func getSession(forIP ipAddress: String) -> MinerWebsocketDataRecordingSession? {
+        accessLock.perform {
+            sessionsByMinerIpAddress[ipAddress]
         }
     }
 }

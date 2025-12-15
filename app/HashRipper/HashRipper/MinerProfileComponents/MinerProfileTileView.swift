@@ -24,6 +24,9 @@ struct MinerProfileTileView: View {
     var minerName: String?
     var handleDeployProfile: (() -> Void)?
 
+    @State private var verificationStatus: PoolVerificationStatus?
+    @State private var showVerificationWizard = false
+
     var body: some View {
         let headerView = HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -37,9 +40,27 @@ struct MinerProfileTileView: View {
                 }
             }
             Spacer()
+
+            // Pool verification badge
+            if let status = verificationStatus {
+                PoolVerificationBadge(status: status)
+                    .onTapGesture {
+                        showVerificationWizard = true
+                    }
+            } else {
+                Button(action: { showVerificationWizard = true }) {
+                    Label("Verify Pool", systemImage: "shield")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+            }
+
             Image(systemName: "server.rack")
                 .font(.title2)
                 .foregroundColor(.accentColor)
+        }
+        .task {
+            verificationStatus = await minerProfile.verificationStatus(context: modelContext)
         }
 
         let primaryPoolView = VStack(alignment: .leading, spacing: 8) {
@@ -262,6 +283,9 @@ struct MinerProfileTileView: View {
             .id("editProfileForm\(minerProfile.name)")
             .presentationSizing(.fitted)
 
+        }
+        .sheet(isPresented: $showVerificationWizard) {
+            PoolVerificationWizard(profile: minerProfile)
         }
     }
 

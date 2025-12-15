@@ -14,12 +14,14 @@ struct MinerWatchDogActionsView: View {
     @Query(
         sort: [SortDescriptor<WatchDogActionLog>(\.timestamp, order: .reverse)]
     ) private var actionLogs: [WatchDogActionLog]
-    
+
     @Query private var allMiners: [Miner]
-    
+
     @State private var markAsReadTask: Task<Void, Never>?
     @State private var unreadActionsWhenOpened: [WatchDogActionLog] = []
-    
+    @State private var selectedTab: WatchDogTab = .activity
+    @StateObject private var poolCoordinator = PoolMonitoringCoordinator.shared
+
     static let windowGroupId = "miner-watchdog-actions"
 
     public init() {
@@ -28,6 +30,53 @@ struct MinerWatchDogActionsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Tab Picker
+                Picker("View", selection: $selectedTab) {
+                    Label("Activity", systemImage: "list.bullet")
+                        .tag(WatchDogTab.activity)
+
+                    Label("Pool Alerts", systemImage: "exclamationmark.shield")
+                        .tag(WatchDogTab.poolAlerts)
+                        .badge(poolCoordinator.activeAlerts.count)
+                }
+                .pickerStyle(.segmented)
+                .padding()
+
+                Divider()
+
+                // Tab Content
+                if selectedTab == .activity {
+                    activityTabContent
+                } else {
+                    PoolAlertsTab()
+                }
+            }
+            .navigationTitle("Watch Dog Actions & Alerts")
+            .toolbar {
+                ToolbarItem(placement: .automatic) {
+                    Button("Refresh", systemImage: "arrow.clockwise") {
+                        // SwiftData auto-updates, but this provides user feedback
+                    }
+                    .help("Refresh action history")
+                }
+            }
+        }
+        .frame(width: 800, height: 600)
+        .onAppear {
+            if selectedTab == .activity {
+                startMarkAsReadTimer()
+            }
+        }
+        .onDisappear {
+            if selectedTab == .activity {
+                markVisibleActionsAsRead()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var activityTabContent: some View {
+        VStack(spacing: 0) {
                 if actionLogs.isEmpty {
                     ContentUnavailableView(
                         "No WatchDog Actions",
@@ -79,26 +128,9 @@ struct MinerWatchDogActionsView: View {
                     }
                     .padding()
                 }
-            }
-            .navigationTitle("WatchDog Actions")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button("Refresh", systemImage: "arrow.clockwise") {
-                        // SwiftData auto-updates, but this provides user feedback
-                    }
-                    .help("Refresh action history")
-                }
-            }
-        }
-        .frame(width: 700, height: 600)
-        .onAppear {
-            startMarkAsReadTimer()
-        }
-        .onDisappear {
-            markVisibleActionsAsRead()
         }
     }
-    
+
     private func clearAllActions() {
         do {
             try modelContext.delete(model: WatchDogActionLog.self)
@@ -684,6 +716,137 @@ extension DateFormatter {
         formatter.dateFormat = "h"
         return formatter
     }()
+}
+
+// MARK: - Watch Dog Tab Enum
+
+enum WatchDogTab {
+    case activity
+    case poolAlerts
+}
+
+// MARK: - Pool Alerts Tab
+
+struct PoolAlertsTab: View {
+    @StateObject private var poolCoordinator = PoolMonitoringCoordinator.shared
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var selectedAlert: PoolAlertEvent?
+    @State private var showOnlyActive = true
+    @State private var allAlerts: [PoolAlertEvent] = []
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Filters
+            HStack {
+                Toggle("Active Only", isOn: $showOnlyActive)
+
+                Spacer()
+
+                if !alerts.isEmpty {
+                    Button("Dismiss All") {
+                        dismissAll()
+                    }
+                    .disabled(alerts.filter { !$0.isDismissed }.isEmpty)
+                }
+            }
+            .padding()
+
+            Divider()
+
+            // Alert List
+            if alerts.isEmpty {
+                EmptyAlertsView(showOnlyActive: showOnlyActive)
+            } else {
+                List(alerts, selection: $selectedAlert) { alert in
+                    PoolAlertRow(alert: alert)
+                        .contextMenu {
+                            Button("View Details") {
+                                selectedAlert = alert
+                            }
+
+                            if !alert.isDismissed {
+                                Button("Dismiss") {
+                                    dismissAlert(alert)
+                                }
+                            }
+
+                            Divider()
+
+                            Button("Copy Pool Info") {
+                                copyPoolInfo(alert)
+                            }
+                        }
+                }
+            }
+        }
+        .sheet(item: $selectedAlert) { alert in
+            PoolAlertDetailView(alert: alert)
+        }
+        .task {
+            await loadAllAlerts()
+        }
+        .onChange(of: showOnlyActive) { _, _ in
+            Task {
+                await loadAllAlerts()
+            }
+        }
+    }
+
+    private var alerts: [PoolAlertEvent] {
+        showOnlyActive ? poolCoordinator.activeAlerts : allAlerts
+    }
+
+    private func loadAllAlerts() async {
+        let service = PoolApprovalService(modelContext: modelContext)
+        let alerts = await service.getAllAlerts(limit: 100)
+        await MainActor.run {
+            allAlerts = alerts
+        }
+    }
+
+    private func dismissAlert(_ alert: PoolAlertEvent) {
+        poolCoordinator.dismissAlert(alert, modelContext: modelContext)
+    }
+
+    private func dismissAll() {
+        for alert in alerts where !alert.isDismissed {
+            poolCoordinator.dismissAlert(alert, modelContext: modelContext)
+        }
+    }
+
+    private func copyPoolInfo(_ alert: PoolAlertEvent) {
+        let info = """
+        Pool: \(alert.poolIdentifier)
+        Miner: \(alert.minerHostname) (\(alert.minerIP))
+        Time: \(alert.detectedAt.formatted())
+        """
+
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(info, forType: .string)
+    }
+}
+
+struct EmptyAlertsView: View {
+    let showOnlyActive: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.shield.fill")
+                .resizable()
+                .frame(width: 60, height: 60)
+                .foregroundColor(.green)
+
+            Text(showOnlyActive ? "No Active Alerts" : "No Alert History")
+                .font(.headline)
+
+            Text("Pool outputs are being monitored for all verified miners.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 #Preview {

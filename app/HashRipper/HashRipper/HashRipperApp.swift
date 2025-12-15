@@ -20,6 +20,7 @@ struct HashRipperApp: App {
     var statusBarManager = StatusBarManager()
     var statsAggregator: MinerStatsAggregator
     var deploymentStore = FirmwareDeploymentStore.shared
+    var poolMonitoringCoordinator = PoolMonitoringCoordinator.shared
 
     init() {
         nw_tls_create_options()
@@ -112,6 +113,8 @@ struct HashRipperApp: App {
                     // Set up window management for status bar
                     setupWindowManagement()
 
+                    // Start pool monitoring
+                    poolMonitoringCoordinator.start(modelContext: SharedDatabase.shared.modelContainer.mainContext)
 
                     // Trigger local network permission check immediately
                     Task {
@@ -135,6 +138,7 @@ struct HashRipperApp: App {
                     newMinerScanner.stopScanning()
                     minerClientManager.pauseAllRefresh()
                     statusBarManager.hideStatusBar()
+                    poolMonitoringCoordinator.stop()
                     Task {
                         await statsAggregator.stopAggregation()
                     }
