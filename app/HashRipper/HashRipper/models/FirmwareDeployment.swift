@@ -21,7 +21,7 @@ final class FirmwareDeployment {
     var deploymentMode: String // "sequential" or "parallel"
     var maxRetries: Int // Number of automatic retries (0-10)
     var enableRestartMonitoring: Bool // Whether to monitor restart after upload
-    var restartTimeout: Double // Timeout in seconds for restart verification (10-120s)
+    var restartTimeout: Double // Timeout in seconds for restart verification (60-120s)
 
     // Status summary - updated as miners complete
     var totalMiners: Int

@@ -78,7 +78,7 @@ final class FirmwareDeploymentWizardModel {
     var enableRetries: Bool = true
     var retryCount: Int = 3
     var enableRestartMonitoring: Bool = true
-    var restartTimeout: Double = 30.0
+    var restartTimeout: Double = 60.0
     
     // Miner selection data
     var selectedMinerIPs: Set<String> = []
@@ -468,7 +468,7 @@ private struct ConfigurationScreen: View {
                     if model.enableRestartMonitoring {
                         HStack {
                             Text("Restart timeout:")
-                            Slider(value: $model.restartTimeout, in: 10...120, step: 5)
+                            Slider(value: $model.restartTimeout, in: 60...120, step: 5)
                             Text("\(Int(model.restartTimeout))s")
                                 .frame(width: 40, alignment: .leading)
                         }

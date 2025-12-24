@@ -29,7 +29,7 @@ final class NewDeploymentWizardModel {
     // Configuration
     var deploymentMode: DeploymentMode = .parallel
     var retryCount: Int = 3
-    var restartTimeout: Double = 35.0
+    var restartTimeout: Double = 60.0
 
     // Miner selection
     var selectedMinerIPs: Set<String> = []
@@ -345,7 +345,7 @@ struct ConfigurationStageView: View {
                 Text("Restart Timeout: \(Int(model.restartTimeout))s")
                     .font(.subheadline)
 
-                Slider(value: $model.restartTimeout, in: 30...120, step: 5)
+                Slider(value: $model.restartTimeout, in: 60...120, step: 5)
 
                 Text("How long to wait for miner to restart after firmware upload and web interface update")
                     .font(.caption)
