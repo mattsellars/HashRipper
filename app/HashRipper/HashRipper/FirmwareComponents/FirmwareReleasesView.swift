@@ -258,8 +258,23 @@ struct ReleaseInfoView: View {
     
     @ViewBuilder
     private var downloadButton: some View {
-        let isDownloaded = downloadsManager.areAllFilesDownloaded(release: firmwareRelease)
-        
+        // Check both filesystem AND downloads array (accessing downloads triggers @Observable tracking)
+        let minerCompleted = downloadsManager.downloads.contains {
+            $0.firmwareRelease.device == firmwareRelease.device &&
+            $0.firmwareRelease.versionTag == firmwareRelease.versionTag &&
+            $0.fileType == .miner &&
+            $0.status == .completed
+        } || downloadsManager.isDownloaded(release: firmwareRelease, fileType: .miner)
+
+        let wwwCompleted = downloadsManager.downloads.contains {
+            $0.firmwareRelease.device == firmwareRelease.device &&
+            $0.firmwareRelease.versionTag == firmwareRelease.versionTag &&
+            $0.fileType == .www &&
+            $0.status == .completed
+        } || downloadsManager.isDownloaded(release: firmwareRelease, fileType: .www)
+
+        let isDownloaded = minerCompleted && wwwCompleted
+
         HStack(spacing: 18) {
             if isDownloaded {
                 Button {

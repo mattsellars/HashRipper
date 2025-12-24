@@ -737,9 +737,44 @@ struct PoolAlertsTab: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Monitoring Status
+            HStack(spacing: 16) {
+                // Monitored miners count
+                HStack(spacing: 6) {
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .foregroundColor(poolCoordinator.monitoredMinerCount > 0 ? .green : .secondary)
+                    Text("Monitoring \(poolCoordinator.monitoredMinerCount) miners")
+                        .font(.callout)
+                }
+
+                Divider()
+                    .frame(height: 16)
+
+                // Last verification time
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle")
+                        .foregroundColor(poolCoordinator.lastVerificationTime != nil ? .blue : .secondary)
+                    if let lastTime = poolCoordinator.lastVerificationTime {
+                        Text("Last verified \(lastTime, format: .relative(presentation: .named))")
+                            .font(.callout)
+                    } else {
+                        Text("No verifications yet")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
             // Filters
             HStack {
-                Toggle("Active Only", isOn: $showOnlyActive)
+                Toggle("Active alerts only", isOn: $showOnlyActive)
 
                 Spacer()
 

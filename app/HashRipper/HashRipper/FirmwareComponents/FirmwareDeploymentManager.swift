@@ -13,6 +13,7 @@ enum DeploymentError: Error {
     case minerUploadFailed(Error)
     case wwwUploadFailed(Error)
     case wwwVersionMismatch(String)
+    case firmwareReleaseNotFound
 }
 
 @MainActor

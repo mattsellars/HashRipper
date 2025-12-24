@@ -16,6 +16,7 @@ class PoolMonitoringCoordinator: ObservableObject {
 
     private var monitoringService: PoolMonitoringService?
     private var alertSubscription: AnyCancellable?
+    private var verificationSubscription: AnyCancellable?
     private var sessionStartedSubscription: AnyCancellable?
     private var sessionStoppedSubscription: AnyCancellable?
     private var database: (any Database)?
@@ -23,6 +24,8 @@ class PoolMonitoringCoordinator: ObservableObject {
 
     @Published var activeAlerts: [PoolAlertEvent] = []
     @Published var lastAlert: PoolAlertEvent?
+    @Published var lastVerificationTime: Date?
+    @Published var monitoredMinerCount: Int = 0
 
     private init() {}
 
@@ -41,6 +44,13 @@ class PoolMonitoringCoordinator: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] alert in
                 self?.handleNewAlert(alert)
+            }
+
+        // Subscribe to successful verifications
+        verificationSubscription = service.verifications
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                self?.handleVerification(event)
             }
 
         // Load existing active alerts
@@ -64,11 +74,17 @@ class PoolMonitoringCoordinator: ObservableObject {
 
         monitoringService?.stopMonitoring()
         alertSubscription?.cancel()
+        verificationSubscription?.cancel()
         sessionStartedSubscription?.cancel()
         sessionStoppedSubscription?.cancel()
         monitoringService = nil
         modelContext = nil
         database = nil
+    }
+
+    private func handleVerification(_ event: VerificationEvent) {
+        lastVerificationTime = event.timestamp
+        monitoredMinerCount = monitoringService?.subscribedMinerCount ?? 0
     }
 
     // MARK: - Auto-Subscription Logic

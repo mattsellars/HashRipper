@@ -59,12 +59,15 @@ final class FirmwareDeploymentStore {
         enableRestartMonitoring: Bool,
         restartTimeout: Double
     ) async throws -> FirmwareDeployment {
-        print("📝 Creating deployment for \(firmwareRelease.versionTag) with \(miners.count) miners")
-        print("   Mode: \(deploymentMode), MaxRetries: \(maxRetries), RestartMonitoring: \(enableRestartMonitoring)")
+        // Look up the FirmwareRelease in our own context to avoid cross-context relationship issues
+        // The passed firmwareRelease may be from a different ModelContext (e.g., the UI context)
+        guard let localRelease = modelContext.model(for: firmwareRelease.persistentModelID) as? FirmwareRelease else {
+            throw DeploymentError.firmwareReleaseNotFound
+        }
 
-        // Create the deployment
+        // Create the deployment using the release from our context
         let deployment = FirmwareDeployment(
-            firmwareRelease: firmwareRelease,
+            firmwareRelease: localRelease,
             totalMiners: miners.count,
             deploymentMode: deploymentMode,
             maxRetries: maxRetries,
@@ -103,9 +106,6 @@ final class FirmwareDeploymentStore {
         modelContext.insert(deployment)
         try modelContext.save()
 
-        print("💾 Deployment saved to database with ID: \(deployment.persistentModelID)")
-        print("   Miner deployments created: \(deployment.minerDeployments.count)")
-
         // Update local state
         lock.perform {
             _activeDeployments.append(deployment)
@@ -117,7 +117,6 @@ final class FirmwareDeploymentStore {
         }
 
         // Start the deployment worker
-        print("🔄 Starting deployment worker...")
         await startDeploymentWorker(for: deployment)
 
         return deployment
@@ -279,23 +278,11 @@ final class FirmwareDeploymentStore {
 
         // Don't start if already running
         let alreadyRunning = lock.perform { _deploymentWorkers[deploymentId] != nil }
-        guard !alreadyRunning else {
-            print("⚠️ Deployment worker already running for \(deploymentId)")
-            return
-        }
+        guard !alreadyRunning else { return }
 
         // Check if dependencies are available
-        guard let clientManager = self.clientManager else {
-            print("❌ ERROR: Cannot start deployment worker - no client manager set")
-            return
-        }
-
-        guard let downloadsManager = self.downloadsManager else {
-            print("❌ ERROR: Cannot start deployment worker - no downloads manager set")
-            return
-        }
-
-        print("🚀 Starting deployment worker for \(deployment.firmwareRelease?.versionTag ?? "Unknown") with \(deployment.totalMiners) miners")
+        guard let clientManager = self.clientManager else { return }
+        guard let downloadsManager = self.downloadsManager else { return }
 
         // Create state holder for this deployment
         let stateHolder = DeploymentStateHolder()
@@ -319,7 +306,6 @@ final class FirmwareDeploymentStore {
 
         // Start deployment
         Task.detached {
-            print("🏃 Worker starting deployment task")
             await worker.start()
         }
     }

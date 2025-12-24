@@ -38,29 +38,19 @@ actor DeploymentWorker {
     }
 
     func start() async {
-        print("🔧 DeploymentWorker.start() called for deployment \(deploymentId)")
-
         guard let deployment = try? modelContext.model(for: deploymentId) as? FirmwareDeployment else {
-            print("❌ ERROR: Could not find deployment with ID \(deploymentId)")
             return
         }
 
-        print("📦 Found deployment: \(deployment.firmwareRelease?.versionTag ?? "Unknown")")
-
         let minerDeployments = deployment.minerDeployments.filter { $0.status == .inProgress }
-
-        print("⛏️ Found \(minerDeployments.count) miners in progress out of \(deployment.minerDeployments.count) total")
+        guard !minerDeployments.isEmpty else { return }
 
         // Deploy based on mode
         if deployment.deploymentMode == "sequential" {
-            print("📝 Starting sequential deployment")
             await deploySequentially(minerDeployments)
         } else {
-            print("🚀 Starting parallel deployment")
             await deployInParallel(minerDeployments)
         }
-
-        print("✅ DeploymentWorker.start() completed")
     }
 
     func cancel() async {
@@ -106,12 +96,7 @@ actor DeploymentWorker {
     // MARK: - Deployment Logic
 
     private func deployToMiner(_ minerDeployment: MinerFirmwareDeployment) async {
-        guard !isCancelled else {
-            print("⚠️ Deployment cancelled, skipping miner \(minerDeployment.minerIPAddress)")
-            return
-        }
-
-        print("🎯 Starting deployment to miner: \(minerDeployment.minerName) (\(minerDeployment.minerIPAddress))")
+        guard !isCancelled else { return }
 
         // Mark as started
         minerDeployment.startedAt = Date()

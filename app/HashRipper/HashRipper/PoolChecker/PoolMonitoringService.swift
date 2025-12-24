@@ -14,6 +14,7 @@ class PoolMonitoringService {
     private let lock = UnfairLock()
     private var minerSubscriptions: [String: AnyCancellable] = [:]  // IP -> subscription
     private let alertPublisher = PassthroughSubject<PoolAlertEvent, Never>()
+    private let verificationPublisher = PassthroughSubject<VerificationEvent, Never>()
 
     // Batching configuration
     private static let batchDebounceInterval: TimeInterval = 0.5  // 500ms debounce
@@ -75,6 +76,16 @@ class PoolMonitoringService {
     // Alert publisher for UI
     var alerts: AnyPublisher<PoolAlertEvent, Never> {
         alertPublisher.eraseToAnyPublisher()
+    }
+
+    // Verification event publisher
+    var verifications: AnyPublisher<VerificationEvent, Never> {
+        verificationPublisher.eraseToAnyPublisher()
+    }
+
+    // Current monitored miner count
+    var subscribedMinerCount: Int {
+        lock.perform { minerSubscriptions.count }
     }
 
     // MARK: - Private Implementation
@@ -320,6 +331,16 @@ class PoolMonitoringService {
                 }
             } else {
                 print("[PoolMonitor] ✓ Outputs verified for \(eventInfo.minerHostname) on \(poolKey.url):\(poolKey.port)")
+
+                // Publish successful verification
+                let event = VerificationEvent(
+                    minerHostname: eventInfo.minerHostname,
+                    minerIP: eventInfo.minerIP,
+                    poolURL: poolKey.url,
+                    poolPort: poolKey.port,
+                    timestamp: Date()
+                )
+                verificationPublisher.send(event)
             }
         }
     }
@@ -454,4 +475,13 @@ private struct AlertCreationData: Sendable {
 struct ComparisonResult {
     let matches: Bool
     let reason: String?
+}
+
+/// Event published when outputs are successfully verified
+struct VerificationEvent {
+    let minerHostname: String
+    let minerIP: String
+    let poolURL: String
+    let poolPort: Int
+    let timestamp: Date
 }

@@ -63,6 +63,30 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         self.websocketClient = AxeOSWebsocketClient()
         self.websocketUrl = URL(string: "ws://\(minerIpAddress)/api/ws")!
         setupMessageForwarding()
+        setupConnectionStateMonitoring()
+    }
+
+    private var connectionStateCancellable: AnyCancellable?
+
+    private func setupConnectionStateMonitoring() {
+        Task {
+            connectionStateCancellable = await websocketClient.connectionStatePublisher
+                .sink { [weak self] state in
+                    guard let self = self else { return }
+                    switch state {
+                    case .failed(let reason):
+                        Logger.sessionLogger.warning("WebSocket connection failed for \(self.minerIpAddress): \(reason)")
+                    case .reconnecting(let attempt):
+                        Logger.sessionLogger.info("WebSocket reconnecting for \(self.minerIpAddress), attempt \(attempt)")
+                    case .connected:
+                        Logger.sessionLogger.info("WebSocket connected for \(self.minerIpAddress)")
+                    case .disconnected:
+                        Logger.sessionLogger.debug("WebSocket disconnected for \(self.minerIpAddress)")
+                    case .connecting:
+                        break
+                    }
+                }
+        }
     }
 
     private var recordingFileWriter: FileLogger?
@@ -117,6 +141,9 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         lock.perform { _state = newState }
         recordingStateSubject.send(newState)
 
+        // Enable auto-reconnect for pool monitoring reliability
+        await websocketClient.setAutoReconnect(true)
+
         Logger.sessionLogger.debug("Connecting websocket to \(self.websocketUrl)")
         await self.websocketClient.connect(to: websocketUrl)
         Logger.sessionLogger.debug("Websocket connect() returned for \(self.minerIpAddress)")
@@ -131,6 +158,9 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         }
 
         lock.perform { _state = .idle }
+
+        // Disable auto-reconnect before closing to prevent reconnection attempts
+        await websocketClient.setAutoReconnect(false)
 
         Logger.sessionLogger.debug("Closing websocket for \(self.minerIpAddress)")
         await self.websocketClient.close()
