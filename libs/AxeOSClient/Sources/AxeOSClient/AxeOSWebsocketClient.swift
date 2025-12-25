@@ -39,12 +39,14 @@ public actor AxeOSWebsocketClient {
 
     // Configuration
     public var autoReconnect: Bool = false
-    public var maxReconnectAttempts: Int = 5
+    public var maxReconnectAttempts: Int = 10
+    public var reconnectBaseDelay: TimeInterval = 5  // Start with 5 seconds
+    public var reconnectMaxDelay: TimeInterval = 60  // Cap at 60 seconds
     public var pingInterval: TimeInterval = 15
     public var maxConsecutivePingFailures: Int = 3
 
     /// Enable or disable auto-reconnect
-    public func setAutoReconnect(_ enabled: Bool, maxAttempts: Int = 5) {
+    public func setAutoReconnect(_ enabled: Bool, maxAttempts: Int = 10) {
         autoReconnect = enabled
         maxReconnectAttempts = maxAttempts
     }
@@ -73,6 +75,8 @@ public actor AxeOSWebsocketClient {
     }
 
     private func connectInternal(to url: URL) async {
+        Logger.websocketsLogger.debug("connectInternal starting for \(url.host ?? "unknown")")
+
         // Cancel existing loops
         readLoopTask?.cancel()
         pingLoopTask?.cancel()
@@ -90,14 +94,18 @@ public actor AxeOSWebsocketClient {
         consecutivePingFailures = 0
         newTask.resume()
 
-        Logger.websocketsLogger.debug("WebSocket task resumed for \(url.absoluteString)")
+        Logger.websocketsLogger.debug("WebSocket task resumed for \(url.host ?? "unknown"), starting read/ping loops")
         setConnectionState(.connected)
 
         // Kick off a concurrent read loop
-        readLoopTask = Task { await readLoop(socket: newTask) }
+        readLoopTask = Task { [weak self] in
+            await self?.readLoop(socket: newTask)
+        }
 
         // Some servers require a ping every N seconds
-        pingLoopTask = Task { await pingLoop(socket: newTask) }
+        pingLoopTask = Task { [weak self] in
+            await self?.pingLoop(socket: newTask)
+        }
     }
 
     /// Send a text message
@@ -172,6 +180,8 @@ public actor AxeOSWebsocketClient {
     }
 
     private func handleConnectionLost(reason: String) async {
+        Logger.websocketsLogger.debug("handleConnectionLost called: \(reason), autoReconnect=\(self.autoReconnect), attempt=\(self.reconnectAttempt)/\(self.maxReconnectAttempts)")
+
         task?.cancel(with: .abnormalClosure, reason: nil)
         task = nil
 
@@ -181,18 +191,25 @@ public actor AxeOSWebsocketClient {
         if autoReconnect, let url = currentURL, reconnectAttempt < maxReconnectAttempts {
             reconnectAttempt += 1
             setConnectionState(.reconnecting(attempt: reconnectAttempt))
-            Logger.websocketsLogger.info("Attempting reconnect \(self.reconnectAttempt)/\(self.maxReconnectAttempts)")
 
-            // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-            let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30.0)
+            // Exponential backoff: 5s, 10s, 20s, 40s, 60s (capped)
+            let delay = min(reconnectBaseDelay * pow(2.0, Double(reconnectAttempt - 1)), reconnectMaxDelay)
+            Logger.websocketsLogger.info("Reconnect attempt \(self.reconnectAttempt)/\(self.maxReconnectAttempts) for \(url.host ?? "unknown") in \(Int(delay))s")
+
             try? await Task.sleep(for: .seconds(delay))
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                Logger.websocketsLogger.debug("Reconnect cancelled during sleep")
+                return
+            }
+
+            Logger.websocketsLogger.debug("Attempting reconnect to \(url.absoluteString)")
             await connectInternal(to: url)
         } else if autoReconnect && reconnectAttempt >= maxReconnectAttempts {
-            setConnectionState(.failed(reason: "Max reconnect attempts reached"))
-            Logger.websocketsLogger.error("Max reconnect attempts reached, giving up")
+            setConnectionState(.failed(reason: "Max reconnect attempts reached after \(maxReconnectAttempts) tries"))
+            Logger.websocketsLogger.error("Max reconnect attempts (\(self.maxReconnectAttempts)) reached for \(self.currentURL?.host ?? "unknown"), giving up")
         } else {
+            Logger.websocketsLogger.debug("Not reconnecting: autoReconnect=\(self.autoReconnect)")
             setConnectionState(.failed(reason: reason))
         }
     }

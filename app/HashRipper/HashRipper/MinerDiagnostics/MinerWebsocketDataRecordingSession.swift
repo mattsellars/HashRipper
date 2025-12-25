@@ -54,48 +54,40 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
     public let minerIpAddress: String
     public let websocketUrl: URL
 
-    public let websocketClient: AxeOSWebsocketClient
+    private var websocketClient: AxeOSWebsocketClient
     private var cancellables: Set<AnyCancellable> = []
+
+    // Reconnection configuration
+    private var reconnectAttempt: Int = 0
+    private let maxReconnectAttempts: Int = 10
+    private let reconnectBaseDelay: TimeInterval = 5
+    private let reconnectMaxDelay: TimeInterval = 60
+    private var reconnectTask: Task<Void, Never>?
 
     init(minerHostName: String, minerIpAddress: String, websocketClient: AxeOSWebsocketClient) {
         self.minerHostName = minerHostName
         self.minerIpAddress = minerIpAddress
         self.websocketClient = AxeOSWebsocketClient()
         self.websocketUrl = URL(string: "ws://\(minerIpAddress)/api/ws")!
-        setupMessageForwarding()
-        setupConnectionStateMonitoring()
     }
 
     private var connectionStateCancellable: AnyCancellable?
-
-    private func setupConnectionStateMonitoring() {
-        Task {
-            connectionStateCancellable = await websocketClient.connectionStatePublisher
-                .sink { [weak self] state in
-                    guard let self = self else { return }
-                    switch state {
-                    case .failed(let reason):
-                        Logger.sessionLogger.warning("WebSocket connection failed for \(self.minerIpAddress): \(reason)")
-                    case .reconnecting(let attempt):
-                        Logger.sessionLogger.info("WebSocket reconnecting for \(self.minerIpAddress), attempt \(attempt)")
-                    case .connected:
-                        Logger.sessionLogger.info("WebSocket connected for \(self.minerIpAddress)")
-                    case .disconnected:
-                        Logger.sessionLogger.debug("WebSocket disconnected for \(self.minerIpAddress)")
-                    case .connecting:
-                        break
-                    }
-                }
-        }
-    }
-
     private var recordingFileWriter: FileLogger?
     private var messageForwardingCancellable: AnyCancellable?
 
-    private func setupMessageForwarding() {
-        Logger.sessionLogger.debug("Setting up message forwarding for \(self.minerIpAddress)")
+    private func setupSubscriptions() {
+        Logger.sessionLogger.debug("Setting up subscriptions for \(self.minerIpAddress)")
+
         Task {
-            messageForwardingCancellable = (await websocketClient.messagePublisher)
+            // Subscribe to connection state changes
+            connectionStateCancellable = await websocketClient.connectionStatePublisher
+                .sink { [weak self] state in
+                    guard let self = self else { return }
+                    self.handleConnectionStateChange(state)
+                }
+
+            // Subscribe to messages
+            messageForwardingCancellable = await websocketClient.messagePublisher
                 .filter({ !$0.isEmpty })
                 .sink { [weak self] message in
                     guard let self = self else { return }
@@ -112,8 +104,83 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
                         }
                     }
                 }
-            Logger.sessionLogger.debug("Message forwarding subscription established for \(self.minerIpAddress)")
+
+            Logger.sessionLogger.debug("Subscriptions established for \(self.minerIpAddress)")
         }
+    }
+
+    private func handleConnectionStateChange(_ state: WebSocketConnectionState) {
+        switch state {
+        case .connected:
+            Logger.sessionLogger.info("WebSocket connected for \(self.minerIpAddress)")
+            reconnectAttempt = 0  // Reset on successful connection
+        case .failed(let reason):
+            Logger.sessionLogger.warning("WebSocket connection failed for \(self.minerIpAddress): \(reason)")
+            // Only attempt reconnect if we're supposed to be recording
+            if isRecording() {
+                scheduleReconnect()
+            }
+        case .disconnected:
+            Logger.sessionLogger.debug("WebSocket disconnected for \(self.minerIpAddress)")
+        case .reconnecting, .connecting:
+            break
+        }
+    }
+
+    private func scheduleReconnect() {
+        guard reconnectAttempt < maxReconnectAttempts else {
+            Logger.sessionLogger.error("Max reconnect attempts (\(self.maxReconnectAttempts)) reached for \(self.minerIpAddress), giving up")
+            return
+        }
+
+        reconnectAttempt += 1
+        let delay = min(reconnectBaseDelay * pow(2.0, Double(reconnectAttempt - 1)), reconnectMaxDelay)
+
+        Logger.sessionLogger.info("Scheduling reconnect \(self.reconnectAttempt)/\(self.maxReconnectAttempts) for \(self.minerIpAddress) in \(Int(delay))s")
+
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            guard let self = self else { return }
+
+            try? await Task.sleep(for: .seconds(delay))
+
+            guard !Task.isCancelled else {
+                Logger.sessionLogger.debug("Reconnect task cancelled for \(self.minerIpAddress)")
+                return
+            }
+
+            // Only reconnect if still recording
+            guard self.isRecording() else {
+                Logger.sessionLogger.debug("Not reconnecting - no longer recording for \(self.minerIpAddress)")
+                return
+            }
+
+            await self.performReconnect()
+        }
+    }
+
+    private func performReconnect() async {
+        Logger.sessionLogger.info("Performing reconnect for \(self.minerIpAddress), attempt \(self.reconnectAttempt)")
+
+        // Close old client
+        await websocketClient.close()
+
+        // Cancel old subscriptions
+        connectionStateCancellable?.cancel()
+        messageForwardingCancellable?.cancel()
+
+        // Create fresh client
+        websocketClient = AxeOSWebsocketClient()
+
+        // Setup new subscriptions
+        setupSubscriptions()
+
+        // Give subscriptions time to establish
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        // Connect
+        Logger.sessionLogger.debug("Connecting new websocket client for \(self.minerIpAddress)")
+        await websocketClient.connect(to: websocketUrl)
     }
 
     func isRecording() -> Bool {
@@ -128,29 +195,32 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
     func startRecording() async {
         Logger.sessionLogger.debug("startRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
 
-        // Re-setup message forwarding if it was cancelled
-        if messageForwardingCancellable == nil {
-            Logger.sessionLogger.debug("Message forwarding cancellable is nil, re-establishing for \(self.minerIpAddress)")
-            setupMessageForwarding()
-            // Give the async setup a moment to complete
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        }
+        // Reset reconnect state
+        reconnectAttempt = 0
+        reconnectTask?.cancel()
+
+        // Setup subscriptions for this client
+        setupSubscriptions()
+
+        // Give subscriptions time to establish
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
 
         // Don't create file by default - user toggles file writing
         let newState: RecordingState = .recording(file: nil)
         lock.perform { _state = newState }
         recordingStateSubject.send(newState)
 
-        // Enable auto-reconnect for pool monitoring reliability
-        await websocketClient.setAutoReconnect(true)
-
         Logger.sessionLogger.debug("Connecting websocket to \(self.websocketUrl)")
-        await self.websocketClient.connect(to: websocketUrl)
+        await websocketClient.connect(to: websocketUrl)
         Logger.sessionLogger.debug("Websocket connect() returned for \(self.minerIpAddress)")
     }
 
     func stopRecording() async {
         Logger.sessionLogger.debug("stopRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
+
+        // Cancel any pending reconnect
+        reconnectTask?.cancel()
+        reconnectTask = nil
 
         // Stop file writing if enabled
         if isWritingToFile {
@@ -159,17 +229,15 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
         lock.perform { _state = .idle }
 
-        // Disable auto-reconnect before closing to prevent reconnection attempts
-        await websocketClient.setAutoReconnect(false)
-
         Logger.sessionLogger.debug("Closing websocket for \(self.minerIpAddress)")
-        await self.websocketClient.close()
+        await websocketClient.close()
         Logger.sessionLogger.debug("Websocket closed for \(self.minerIpAddress)")
 
-        // Cancel message forwarding so it can be re-established on next recording
+        // Cancel subscriptions
+        connectionStateCancellable?.cancel()
+        connectionStateCancellable = nil
         messageForwardingCancellable?.cancel()
         messageForwardingCancellable = nil
-        Logger.sessionLogger.debug("Message forwarding cancelled for \(self.minerIpAddress)")
 
         cancellables.forEach { $0.cancel() }
         cancellables.removeAll()
