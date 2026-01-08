@@ -59,10 +59,13 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
     // Reconnection configuration
     private var reconnectAttempt: Int = 0
-    private let maxReconnectAttempts: Int = 10
+    private let maxReconnectAttempts: Int = 100
     private let reconnectBaseDelay: TimeInterval = 5
     private let reconnectMaxDelay: TimeInterval = 60
     private var reconnectTask: Task<Void, Never>?
+
+    // App Nap prevention - keeps websocket alive when app is backgrounded
+    private var appNapActivity: NSObjectProtocol?
 
     init(minerHostName: String, minerIpAddress: String, websocketClient: AxeOSWebsocketClient) {
         self.minerHostName = minerHostName
@@ -92,6 +95,12 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
                 .sink { [weak self] message in
                     guard let self = self else { return }
 
+                    // Reset reconnect counter on first message - connection is verified stable
+                    if self.reconnectAttempt > 0 {
+                        Logger.sessionLogger.debug("Received data, resetting reconnect counter for \(self.minerIpAddress)")
+                        self.reconnectAttempt = 0
+                    }
+
                     let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
 
                     // Send raw message
@@ -113,7 +122,9 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         switch state {
         case .connected:
             Logger.sessionLogger.info("WebSocket connected for \(self.minerIpAddress)")
-            reconnectAttempt = 0  // Reset on successful connection
+            // Note: Don't reset reconnectAttempt here - the client sets .connected
+            // before the connection is actually verified. We reset it when we receive
+            // actual data (see message subscription).
         case .failed(let reason):
             Logger.sessionLogger.warning("WebSocket connection failed for \(self.minerIpAddress): \(reason)")
             // Only attempt reconnect if we're supposed to be recording
@@ -121,6 +132,7 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
                 scheduleReconnect()
             }
         case .disconnected:
+            // Don't reconnect on .disconnected - this is triggered by our own close() calls
             Logger.sessionLogger.debug("WebSocket disconnected for \(self.minerIpAddress)")
         case .reconnecting, .connecting:
             break
@@ -162,12 +174,14 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
     private func performReconnect() async {
         Logger.sessionLogger.info("Performing reconnect for \(self.minerIpAddress), attempt \(self.reconnectAttempt)")
 
+        // Cancel old subscriptions FIRST to avoid receiving state changes from close()
+        connectionStateCancellable?.cancel()
+        connectionStateCancellable = nil
+        messageForwardingCancellable?.cancel()
+        messageForwardingCancellable = nil
+
         // Close old client
         await websocketClient.close()
-
-        // Cancel old subscriptions
-        connectionStateCancellable?.cancel()
-        messageForwardingCancellable?.cancel()
 
         // Create fresh client
         websocketClient = AxeOSWebsocketClient()
@@ -194,6 +208,13 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
 
     func startRecording() async {
         Logger.sessionLogger.debug("startRecording() called for \(self.minerIpAddress), current state: \(String(describing: self.state))")
+
+        // Prevent App Nap from throttling/suspending websocket connections
+        appNapActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Monitoring miner websocket for \(minerHostName)"
+        )
+        Logger.sessionLogger.debug("App Nap prevention started for \(self.minerIpAddress)")
 
         // Reset reconnect state
         reconnectAttempt = 0
@@ -225,6 +246,13 @@ class MinerWebsocketDataRecordingSession: ObservableObject {
         // Stop file writing if enabled
         if isWritingToFile {
             stopFileWriting()
+        }
+
+        // End App Nap prevention
+        if let activity = appNapActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            appNapActivity = nil
+            Logger.sessionLogger.debug("App Nap prevention ended for \(self.minerIpAddress)")
         }
 
         lock.perform { _state = .idle }

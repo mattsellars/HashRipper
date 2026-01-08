@@ -149,7 +149,24 @@ class AppSettings {
     }
 
     // MARK: - WatchDog Settings
-    
+
+    @ObservationIgnored
+    private let poolCheckerEnabledKey = "poolCheckerEnabled"
+    var isPoolCheckerEnabled: Bool {
+        get {
+            // Default to false - user must opt-in
+            if userDefaults.object(forKey: poolCheckerEnabledKey) == nil {
+                return false
+            }
+            return userDefaults.bool(forKey: poolCheckerEnabledKey)
+        }
+        set {
+            userDefaults.set(newValue, forKey: poolCheckerEnabledKey)
+            // Post notification so coordinator can react
+            NotificationCenter.default.post(name: .poolCheckerSettingChanged, object: nil)
+        }
+    }
+
     @ObservationIgnored
     private let watchdogEnabledMinersKey = "watchdogEnabledMiners"
     var watchdogEnabledMiners: Set<String> {

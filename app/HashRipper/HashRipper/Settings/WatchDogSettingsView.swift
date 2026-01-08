@@ -13,6 +13,7 @@ struct WatchDogSettingsView: View {
     @Query(sort: [SortDescriptor<Miner>(\.hostName)]) private var allMiners: [Miner]
     @State private var settings = AppSettings.shared
     @State private var isGloballyEnabled: Bool = true
+    @State private var isPoolCheckerEnabled: Bool = false
     @State private var isHowItWorksExpanded: Bool = false
     
     var body: some View {
@@ -26,12 +27,38 @@ struct WatchDogSettingsView: View {
                             .onChange(of: isGloballyEnabled) { _, newValue in
                                 settings.isWatchdogGloballyEnabled = newValue
                             }
-                        
+
                         Text("Automatically restart miners that become unresponsive or show signs of failure.")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
-                    
+
+                    Divider()
+
+                    // Pool Checker Toggle
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle("Enable Pool Checker", isOn: $isPoolCheckerEnabled)
+                            .font(.headline)
+                            .onChange(of: isPoolCheckerEnabled) { _, newValue in
+                                settings.isPoolCheckerEnabled = newValue
+                            }
+
+                        Text("Periodically verify that miners are connected to approved pools with correct payout addresses. Requires pool validation setup.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        if isPoolCheckerEnabled {
+                            HStack(spacing: 6) {
+                                Image(systemName: "info.circle")
+                                    .foregroundColor(.blue)
+                                Text("Connects to miner websockets every 20 minutes to verify pool outputs.")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+
                     Divider()
                     
                     // How WatchDog Works - Expandable Section
@@ -154,6 +181,7 @@ struct WatchDogSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             isGloballyEnabled = settings.isWatchdogGloballyEnabled
+            isPoolCheckerEnabled = settings.isPoolCheckerEnabled
         }
     }
     

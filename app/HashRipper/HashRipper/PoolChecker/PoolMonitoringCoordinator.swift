@@ -14,13 +14,11 @@ import UserNotifications
 class PoolMonitoringCoordinator: ObservableObject {
     static let shared = PoolMonitoringCoordinator()
 
-    private var monitoringService: PoolMonitoringService?
-    private var alertSubscription: AnyCancellable?
-    private var verificationSubscription: AnyCancellable?
-    private var sessionStartedSubscription: AnyCancellable?
-    private var sessionStoppedSubscription: AnyCancellable?
+    private var schedulerResultSubscription: AnyCancellable?
+    private var settingsSubscription: AnyCancellable?
     private var database: (any Database)?
     private var modelContext: ModelContext?
+    private var isStarted: Bool = false
 
     @Published var activeAlerts: [PoolAlertEvent] = []
     @Published var lastAlert: PoolAlertEvent?
@@ -30,28 +28,11 @@ class PoolMonitoringCoordinator: ObservableObject {
     private init() {}
 
     func start(modelContext: ModelContext) {
-        print("[PoolCoordinator] Starting pool monitoring")
+        print("[PoolCoordinator] Initializing pool monitoring coordinator")
 
         self.modelContext = modelContext
         self.database = SharedDatabase.shared.database
-        let service = PoolMonitoringService(database: SharedDatabase.shared.database)
-        self.monitoringService = service
-
-        service.startMonitoring()
-
-        // Subscribe to alerts
-        alertSubscription = service.alerts
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] alert in
-                self?.handleNewAlert(alert)
-            }
-
-        // Subscribe to successful verifications
-        verificationSubscription = service.verifications
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] event in
-                self?.handleVerification(event)
-            }
+        self.isStarted = true
 
         // Load existing active alerts
         loadActiveAlerts(modelContext: modelContext)
@@ -59,169 +40,121 @@ class PoolMonitoringCoordinator: ObservableObject {
         // Request notification permissions
         requestNotificationPermissions()
 
-        // Subscribe to websocket session events for auto-subscription
-        setupSessionSubscriptions()
+        // Subscribe to settings changes
+        settingsSubscription = NotificationCenter.default.publisher(for: .poolCheckerSettingChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleSettingChanged()
+            }
 
-        // Subscribe to any already-active recording sessions with validated pools
-        subscribeToActiveSessionsWithValidation()
-
-        // Auto-start websocket recording for miners with validated pools
-        autoStartRecordingForValidatedMiners()
+        // Start scheduler only if pool checker is enabled
+        if AppSettings.shared.isPoolCheckerEnabled {
+            startScheduler()
+        } else {
+            print("[PoolCoordinator] Pool checker is disabled in settings")
+        }
     }
 
     func stop() {
         print("[PoolCoordinator] Stopping pool monitoring")
 
-        monitoringService?.stopMonitoring()
-        alertSubscription?.cancel()
-        verificationSubscription?.cancel()
-        sessionStartedSubscription?.cancel()
-        sessionStoppedSubscription?.cancel()
-        monitoringService = nil
+        stopScheduler()
+        settingsSubscription?.cancel()
+        settingsSubscription = nil
+        isStarted = false
         modelContext = nil
         database = nil
     }
 
-    private func handleVerification(_ event: VerificationEvent) {
-        lastVerificationTime = event.timestamp
-        monitoredMinerCount = monitoringService?.subscribedMinerCount ?? 0
-    }
-
-    // MARK: - Auto-Subscription Logic
-
-    private func setupSessionSubscriptions() {
-        let registry = MinerWebsocketRecordingSessionRegistry.shared
-
-        // When a session starts recording, check if pool has validation
-        sessionStartedSubscription = registry.sessionRecordingStartedPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] session in
-                self?.handleSessionStarted(session)
-            }
-
-        // When a session stops recording, unsubscribe
-        sessionStoppedSubscription = registry.sessionRecordingStoppedPublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] ipAddress in
-                self?.handleSessionStopped(ipAddress: ipAddress)
-            }
-    }
-
-    private func handleSessionStarted(_ session: MinerWebsocketDataRecordingSession) {
-        Task {
-            await subscribeIfPoolValidated(ipAddress: session.minerIpAddress)
+    private func handleSettingChanged() {
+        if AppSettings.shared.isPoolCheckerEnabled {
+            print("[PoolCoordinator] Pool checker enabled - starting scheduler")
+            startScheduler()
+        } else {
+            print("[PoolCoordinator] Pool checker disabled - stopping scheduler")
+            stopScheduler()
         }
     }
 
-    private func handleSessionStopped(ipAddress: String) {
-        monitoringService?.unsubscribeFromMiner(ipAddress: ipAddress)
-    }
-
-    /// Subscribe to all currently active sessions that have validated pools
-    private func subscribeToActiveSessionsWithValidation() {
-        let registry = MinerWebsocketRecordingSessionRegistry.shared
-        let activeSessions = registry.getActiveRecordingSessions()
-
-        for session in activeSessions {
-            Task {
-                await subscribeIfPoolValidated(ipAddress: session.minerIpAddress)
-            }
-        }
-    }
-
-    /// Auto-start websocket recording for all online miners that have validated pools
-    private func autoStartRecordingForValidatedMiners() {
+    private func startScheduler() {
         guard let modelContext = modelContext else { return }
 
-        // Get all online miners
-        let descriptor = FetchDescriptor<Miner>()
-        guard let allMiners = try? modelContext.fetch(descriptor) else { return }
+        let scheduler = PoolVerificationScheduler.shared
+        scheduler.start(database: SharedDatabase.shared.database, modelContext: modelContext)
 
-        let onlineMiners = allMiners.filter { !$0.isOffline }
-
-        for miner in onlineMiners {
-            Task {
-                await startRecordingIfPoolValidated(miner: miner)
+        // Subscribe to verification results
+        schedulerResultSubscription = scheduler.verificationResults
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] result in
+                self?.handleVerificationResult(result)
             }
+
+        print("[PoolCoordinator] Pool verification scheduler started")
+    }
+
+    private func stopScheduler() {
+        PoolVerificationScheduler.shared.stop()
+        schedulerResultSubscription?.cancel()
+        schedulerResultSubscription = nil
+        print("[PoolCoordinator] Pool verification scheduler stopped")
+    }
+
+    private func handleVerificationResult(_ result: VerificationResult) {
+        switch result {
+        case .verified(let ip, let hostname):
+            print("[PoolCoordinator] ✓ Verified: \(hostname) (\(ip))")
+            lastVerificationTime = Date()
+
+        case .mismatch(let ip, let hostname, let reason):
+            print("[PoolCoordinator] ⚠️ Mismatch: \(hostname) (\(ip)) - \(reason)")
+            // Reload alerts to pick up the new one
+            if let modelContext = modelContext {
+                loadActiveAlerts(modelContext: modelContext)
+            }
+
+        case .timeout(let ip):
+            print("[PoolCoordinator] ⏱ Timeout: \(ip)")
+
+        case .error(let ip, let error):
+            print("[PoolCoordinator] ❌ Error: \(ip) - \(error)")
         }
     }
 
-    /// Start websocket recording for a miner if their pool has been validated
-    private func startRecordingIfPoolValidated(miner: Miner) async {
-        guard let modelContext = modelContext else { return }
-
-        // Get latest update to find current pool info
+    /// Manually trigger a verification check for a specific miner
+    func triggerVerification(for miner: Miner, modelContext: ModelContext) async {
         guard let update = miner.getLatestUpdate(from: modelContext) else { return }
 
-        // Determine current pool (primary or fallback)
         let poolURL = update.isUsingFallbackStratum ? update.fallbackStratumURL : update.stratumURL
         let poolPort = update.isUsingFallbackStratum ? update.fallbackStratumPort : update.stratumPort
         let stratumUser = update.isUsingFallbackStratum ? update.fallbackStratumUser : update.stratumUser
-        let userBase = PoolApproval.extractUserBase(from: stratumUser)
 
-        // Check if this pool has a validation
+        // Get approval for outputs
         let approvalService = PoolApprovalService(modelContext: modelContext)
-        let approval = await approvalService.findApproval(
+        guard let approval = await approvalService.findApproval(
             poolURL: poolURL,
             poolPort: poolPort,
-            stratumUserBase: userBase
-        )
-
-        guard approval != nil else { return }
-
-        // Get or create session and start recording
-        let registry = MinerWebsocketRecordingSessionRegistry.shared
-        let session = registry.getOrCreateRecordingSession(
-            minerHostName: miner.hostName,
-            minerIpAddress: miner.ipAddress
-        )
-
-        if !session.isRecording() {
-            await session.startRecording()
-            print("[PoolMonitor] Started recording for \(miner.hostName) (\(poolURL):\(poolPort))")
+            stratumUserBase: PoolApproval.extractUserBase(from: stratumUser)
+        ) else {
+            print("[PoolCoordinator] No approval found for \(miner.hostName)")
+            return
         }
 
-        // Explicitly subscribe to monitoring (don't rely on event chain which has race conditions)
-        monitoringService?.subscribeToMiner(ipAddress: miner.ipAddress)
-    }
-
-    /// Check if miner's current pool has a validation, and subscribe if so
-    private func subscribeIfPoolValidated(ipAddress: String) async {
-        guard let modelContext = modelContext else { return }
-
-        // Find miner by IP
-        let predicate = #Predicate<Miner> { $0.ipAddress == ipAddress }
-        let descriptor = FetchDescriptor<Miner>(predicate: predicate)
-        guard let miner = try? modelContext.fetch(descriptor).first else { return }
-
-        // Get latest update to find current pool info
-        guard let update = miner.getLatestUpdate(from: modelContext) else { return }
-
-        // Determine current pool (primary or fallback)
-        let poolURL = update.isUsingFallbackStratum ? update.fallbackStratumURL : update.stratumURL
-        let poolPort = update.isUsingFallbackStratum ? update.fallbackStratumPort : update.stratumPort
-        let stratumUser = update.isUsingFallbackStratum ? update.fallbackStratumUser : update.stratumUser
-        let userBase = PoolApproval.extractUserBase(from: stratumUser)
-
-        // Check if this pool has a validation
-        let approvalService = PoolApprovalService(modelContext: modelContext)
-        let approval = await approvalService.findApproval(
+        let minerInfo = MinerCheckInfo(
+            ipAddress: miner.ipAddress,
+            hostname: miner.hostName,
+            macAddress: miner.macAddress,
             poolURL: poolURL,
             poolPort: poolPort,
-            stratumUserBase: userBase
+            stratumUser: stratumUser,
+            isUsingFallback: update.isUsingFallbackStratum,
+            approvedOutputs: approval.approvedOutputs
         )
 
-        if approval != nil {
-            monitoringService?.subscribeToMiner(ipAddress: ipAddress)
-        }
-    }
-
-    func subscribeToMiner(ipAddress: String) {
-        monitoringService?.subscribeToMiner(ipAddress: ipAddress)
-    }
-
-    func unsubscribeFromMiner(ipAddress: String) {
-        monitoringService?.unsubscribeFromMiner(ipAddress: ipAddress)
+        PoolVerificationScheduler.shared.scheduleCheck(
+            for: minerInfo,
+            database: SharedDatabase.shared.database,
+            delay: 0  // Immediate
+        )
     }
 
     private func handleNewAlert(_ alert: PoolAlertEvent) {

@@ -20,7 +20,7 @@ struct MinerHashOpsCompactTile: View {
     @Environment(\.newMinerScanner) var newMinerScanner
     @Environment(\.modelContext) var modelContext
 
-    var miner: Miner
+    @Bindable var miner: Miner
     private let macAddress: String
 
     @State private var mostRecentUpdate: MinerUpdate?

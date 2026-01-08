@@ -14,6 +14,7 @@ import os.log
 
 extension Notification.Name {
     static let minerUpdateInserted = Notification.Name("minerUpdateInserted")
+    static let poolCheckerSettingChanged = Notification.Name("poolCheckerSettingChanged")
 }
 
 let kMaxUpdateHistory = 3000

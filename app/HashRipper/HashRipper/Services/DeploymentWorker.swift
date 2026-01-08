@@ -198,6 +198,11 @@ actor DeploymentWorker {
                     print("⏳ Waiting for \(minerDeployment.minerIPAddress) to restart after firmware upload...")
                     try await monitorFirmwareInstall(client: client, timeout: deployment.restartTimeout)
                     print("✅ \(minerDeployment.minerIPAddress) has restarted and is responsive")
+
+                    // Additional stabilization delay - miner may respond to GET requests
+                    // but not be ready for large file uploads yet
+                    print("⏳ Waiting 15s for \(minerDeployment.minerIPAddress) to stabilize before WWW upload...")
+                    try await Task.sleep(nanoseconds: 15_000_000_000)
                 } else {
                     // Even without monitoring, give it time to apply firmware
                     print("⏳ Waiting 30s for \(minerDeployment.minerIPAddress) to apply firmware...")
